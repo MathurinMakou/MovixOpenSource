@@ -30,6 +30,9 @@ const HOST_ICON_MAP = {
   'Dropbox': '/hosts/dropbox.svg',
 };
 
+// Hydracker uploaders to filter out (unreliable / spam). Hardcoded; not env-driven.
+const BLOCKED_DARKIWORLD_USERS = new Set(['Guest']);
+
 async function resolveMovixUsername(userId, authType) {
   try {
     const safeUserId = String(userId).replace(/[^a-zA-Z0-9_\-]/g, '');
@@ -308,6 +311,34 @@ async function findAllEntriesForEpisode({ titleId, seasonId, episodeId, perPage 
 }
 
 // ---------------------------------------------------------------------------
+// partitionLinksByDecodeCache — orders darkiworld links so that entries with
+// a successful decode cache file on disk appear first. Cache file presence is
+// verified via getFromCacheNoExpiration; only `success === true` payloads
+// count (failed markers and missing files do NOT count as "cached").
+// Movix links are passed through untouched (caller prepends them).
+// ---------------------------------------------------------------------------
+async function partitionLinksByDecodeCache(links) {
+  if (!Array.isArray(links) || links.length === 0) return links || [];
+  const probes = await Promise.all(links.map(async (link) => {
+    if (link?.id == null) return { link, available: false };
+    try {
+      const cacheKey = generateCacheKey(`darkiworld_decode_v2_${link.id}`);
+      const payload = await getFromCacheNoExpiration(DOWNLOAD_CACHE_DIR, cacheKey);
+      return { link, available: payload?.success === true };
+    } catch (_) {
+      return { link, available: false };
+    }
+  }));
+  const available = [];
+  const rest = [];
+  for (const { link, available: ok } of probes) {
+    if (ok) available.push(link);
+    else rest.push(link);
+  }
+  return [...available, ...rest];
+}
+
+// ---------------------------------------------------------------------------
 // GET /download/:type/:id
 // Récupérer tous les liens d'amélioration DarkiWorld pour un film ou un épisode
 // Params: type (movie/tv), id (TMDB ID)
@@ -350,15 +381,45 @@ router.get('/download/:type/:id', async (req, res) => {
     let dataReturned = false;
 
     if (cachedData) {
-      // console.log(`Résultats de téléchargement pour ${type}/${id} récupérés du cache`);
+      // Re-sort by disk decode cache presence on every read so previously
+      // decoded entries (from past clicks / past prewarms) bubble to the top
+      // even though the list cache itself is frozen between writes.
       const cachedAll = Array.isArray(cachedData?.all) ? cachedData.all.map(r => ({ ...r, source: r.source || 'darkiworld' })) : [];
-      res.status(200).json({ ...cachedData, all: [...movixLinks, ...cachedAll], movixCount: movixLinks.length });
+      const sortedCachedAll = await partitionLinksByDecodeCache(cachedAll);
+      res.status(200).json({ ...cachedData, all: [...movixLinks, ...sortedCachedAll], movixCount: movixLinks.length });
       dataReturned = true;
     }
+
+    // Determine refresh staleness once and reuse below. shouldUpdateCache
+    // returns true if the file is missing OR older than 40 min.
+    const cacheNeedsUpdate = await shouldUpdateCache(DOWNLOAD_CACHE_DIR, cacheKey);
 
     // Vérifier si l'utilisateur a accès premium (optionnel)
     const auth = await getAuthIfValid(req);
     const darkiworld_premium = auth && auth.userType === 'premium';
+
+    // Pre-warm decode cache via hydracker's new /download endpoint. Fires on
+    // cache miss AND on stale cache (>40min) — the new /download endpoint is
+    // separate from the /decode endpoint that gets rate-limited, so prewarm
+    // can keep the decode cache hot for the curated subset even during a
+    // rate-limit window. Best-effort: a failure here is a no-op for the
+    // response — the queue still handles uncached ids on click.
+    const prewarmPromise = cacheNeedsUpdate
+      ? hydrackerQueue.prewarmDecodeCache({
+          type, id, season, episode,
+          deps: {
+            axiosDarkinoRequest,
+            refreshDarkinoSessionIfNeeded,
+            cacheDir: DOWNLOAD_CACHE_DIR,
+            generateCacheKey,
+            saveToCache,
+            blockedUsers: BLOCKED_DARKIWORLD_USERS
+          }
+        }).catch((e) => {
+          console.warn(`[hydracker] prewarm launcher caught: ${e?.message || e}`);
+          return { warmed: 0, warmedIds: new Set() };
+        })
+      : Promise.resolve({ warmed: 0, warmedIds: new Set() });
 
     let allEnhancementLinks = [];
 
@@ -375,7 +436,8 @@ router.get('/download/:type/:id', async (req, res) => {
           url: `/api/v1/titles/${id}/content/liens?perPage=100&loader=linksdl&filters=&paginate=preferLengthAware`
         });
 
-        const allEntries = liensResp.data?.pagination?.data || [];
+        const rawEntries = liensResp.data?.pagination?.data || [];
+        const allEntries = rawEntries.filter(e => !BLOCKED_DARKIWORLD_USERS.has(e?.id_user));
 
         // Traiter directement les entrées sans faire de requête de décodage
         const enhancementSources = allEntries.map(entry => {
@@ -410,13 +472,15 @@ router.get('/download/:type/:id', async (req, res) => {
       // Pour les séries (épisodes)
       try {
         // 1. Paginer intelligemment pour trouver l'épisode
-        const allEntries = await findAllEntriesForEpisode({
+        const rawEntries = await findAllEntriesForEpisode({
           titleId: id,
           seasonId: parseInt(season),
           episodeId: parseInt(episode),
           perPage: 100,
           maxPages: 10
         });
+
+        const allEntries = rawEntries.filter(e => !BLOCKED_DARKIWORLD_USERS.has(e?.id_user));
 
         // Traiter directement les entrées sans faire de requête de décodage
         const enhancementSources = allEntries.map(entry => {
@@ -453,7 +517,22 @@ router.get('/download/:type/:id', async (req, res) => {
       } catch (_) { /* upstream failure leaves allEnhancementLinks empty */ }
     }
 
-    const taggedDarkiLinks = allEnhancementLinks.map(r => ({ ...r, source: 'darkiworld' }));
+    // Wait for the prewarm to settle so the disk decode cache is hot before
+    // we respond — without this await the client could click a link before
+    // the pre-warmed entry was written and would needlessly hit the queue.
+    const prewarmResult = await prewarmPromise;
+    if (prewarmResult?.warmed) {
+      console.log(`[hydracker] prewarm ${type}/${id} warmed=${prewarmResult.warmed}`);
+    }
+
+    // Sort by disk decode cache presence: anything with an existing
+    // success-shaped payload at darkiworld_decode_v2_{id} (whether from a
+    // prior queue decode, a prior decodeRequestSync, or this request's
+    // prewarm) bubbles to the top. The prewarm just completed above so its
+    // writes are already on disk and counted here.
+    const orderedEnhancementLinks = await partitionLinksByDecodeCache(allEnhancementLinks);
+
+    const taggedDarkiLinks = orderedEnhancementLinks.map(r => ({ ...r, source: 'darkiworld' }));
     const responseData = {
       success: true,
       all: [...movixLinks, ...taggedDarkiLinks],
@@ -465,21 +544,20 @@ router.get('/download/:type/:id', async (req, res) => {
       res.json(responseData);
     }
 
-    // Background update du cache
+    // Background update du cache — reuses cacheNeedsUpdate computed above
+    // so we don't restat the file twice per request.
     (async () => {
       try {
-        // Vérifier si le cache doit être mis à jour
-        const shouldUpdate = await shouldUpdateCache(DOWNLOAD_CACHE_DIR, cacheKey);
-        if (!shouldUpdate) {
-          return; // Ne pas mettre à jour le cache
+        if (!cacheNeedsUpdate) {
+          return; // Cache encore frais (<40 min), pas de réécriture.
         }
 
         // Si on a des données, sauvegarder dans le cache
-        if (allEnhancementLinks && allEnhancementLinks.length > 0) {
+        if (orderedEnhancementLinks && orderedEnhancementLinks.length > 0) {
           // Store only DarkiWorld entries in cache — Movix links are fetched fresh each request
           const darkiOnlyData = {
             success: true,
-            all: allEnhancementLinks.map(r => ({ ...r, source: 'darkiworld' }))
+            all: orderedEnhancementLinks.map(r => ({ ...r, source: 'darkiworld' }))
           };
           await saveToCache(DOWNLOAD_CACHE_DIR, cacheKey, darkiOnlyData);
         }
@@ -538,13 +616,21 @@ router.get('/decode/:id', async (req, res) => {
       return res.status(200).json({ error: 'Service Darkino temporairement indisponible (maintenance)' });
     }
 
-    const result = await hydrackerQueue.decodeRequest(id, {
-      redis,
-      cacheDir: DOWNLOAD_CACHE_DIR,
-      generateCacheKey,
-      getFromCacheNoExpiration,
-      shouldUpdateCache48h
-    });
+    const result = hydrackerQueue.BATCHING_ENABLED
+      ? await hydrackerQueue.decodeRequest(id, {
+          redis,
+          cacheDir: DOWNLOAD_CACHE_DIR,
+          generateCacheKey,
+          getFromCacheNoExpiration
+        })
+      : await hydrackerQueue.decodeRequestSync(id, {
+          cacheDir: DOWNLOAD_CACHE_DIR,
+          generateCacheKey,
+          getFromCacheNoExpiration,
+          saveToCache,
+          axiosDarkinoRequest,
+          refreshDarkinoSessionIfNeeded
+        });
 
     if (result.payload) return res.status(200).json(result.payload);
     if (result.failed) {

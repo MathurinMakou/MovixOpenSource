@@ -1181,7 +1181,7 @@ const VideoPlayer = forwardRef<VideoPlayerRefHandle, VideoPlayerProps>(({ showId
   const { t } = useTranslation();
   const [videoSource, setVideoSource] = useState<string | null>(null);
   const [customSources, setCustomSources] = useState<string[]>([]);
-  const [selectedSource, setSelectedSource] = useState<'primary' | 'vostfr' | 'multi' | 'videasy' | 'vidsrccc' | 'vidsrcsu' | 'vidsrcwtf1' | 'vidsrcwtf5' | 'omega' | 'darkino' | 'mp4' | number | null>(null); // Ajout de 'mp4'
+  const [selectedSource, setSelectedSource] = useState<'primary' | 'peachify' | 'vostfr' | 'multi' | 'videasy' | 'vidsrccc' | 'vidsrcsu' | 'vidsrcwtf1' | 'vidsrcwtf5' | 'omega' | 'darkino' | 'mp4' | number | null>(null); // Ajout de 'mp4'
   const [frembedAvailable, setFrembedAvailable] = useState<boolean>(true);
   const [, setIsLoading] = useState(true);
   const [coflixData, setCoflixData] = useState<CoflixResponse | null>(null);
@@ -1502,9 +1502,12 @@ const VideoPlayer = forwardRef<VideoPlayerRefHandle, VideoPlayerProps>(({ showId
       // Handled by HLSPlayer component
       return;
     }
-    switch (selectedSource as 'primary' | 'vostfr' | 'multi' | 'videasy' | 'vidsrccc' | 'vidsrcsu' | 'vidsrcwtf1' | 'vidsrcwtf5' | 'omega' | 'darkino' | 'mp4' | number) {
+    switch (selectedSource as 'primary' | 'peachify' | 'vostfr' | 'multi' | 'videasy' | 'vidsrccc' | 'vidsrcsu' | 'vidsrcwtf1' | 'vidsrcwtf5' | 'omega' | 'darkino' | 'mp4' | number) {
       case 'primary':
         newSrc = `https://frembed.click/api/serie.php?id=${showId}&sa=${seasonNumber}&epi=${episodeNumber}`;
+        break;
+      case 'peachify':
+        newSrc = `https://peachify.top/embed/tv/${showId}/${seasonNumber}/${episodeNumber}?sub=French&accent=dc2626`;
         break;
       case 'vostfr':
         newSrc = `https://vidsrc.wtf/api/3/tv/?id=${showId}&s=${seasonNumber}&e=${episodeNumber}`;
@@ -1737,7 +1740,7 @@ const VideoPlayer = forwardRef<VideoPlayerRefHandle, VideoPlayerProps>(({ showId
         <div className="relative">
           <button
             onClick={() => setShowVostfrOptions(!showVostfrOptions)}
-            className={`px-4 py-2 rounded flex items-center gap-2 ${(selectedSource === 'vostfr' || selectedSource === 'videasy' || selectedSource === 'vidsrccc' || selectedSource === 'vidsrcsu' || selectedSource === 'vidsrcwtf1' || selectedSource === 'vidsrcwtf5')
+            className={`px-4 py-2 rounded flex items-center gap-2 ${(selectedSource === 'peachify' || selectedSource === 'vostfr' || selectedSource === 'videasy' || selectedSource === 'vidsrccc' || selectedSource === 'vidsrcsu' || selectedSource === 'vidsrcwtf1' || selectedSource === 'vidsrcwtf5')
               ? 'bg-red-600 text-white'
               : 'bg-gray-700 hover:bg-gray-600'
               }`}
@@ -1757,13 +1760,23 @@ const VideoPlayer = forwardRef<VideoPlayerRefHandle, VideoPlayerProps>(({ showId
           {showVostfrOptions && (
             <div className="absolute z-50 top-full left-0 mt-1 bg-gray-800 rounded-lg shadow-lg overflow-hidden min-w-[200px]">
               <button
+                onClick={() => handleSelectSource('peachify')}
+                className={`w-full px-4 py-2 text-left ${selectedSource === 'peachify'
+                  ? 'bg-red-600/70 text-white'
+                  : 'hover:bg-gray-700'
+                  }`}
+              >
+                Peachify
+              </button>
+
+              <button
                 onClick={() => handleSelectSource('vostfr')}
                 className={`w-full px-4 py-2 text-left ${selectedSource === 'vostfr'
                   ? 'bg-red-600/70 text-white'
                   : 'hover:bg-gray-700'
                   }`}
               >
-                {t('details.playerVOSTFR', { number: 1 })}
+                Vidsrc.wtf 3
               </button>
 
               <button
@@ -1773,7 +1786,7 @@ const VideoPlayer = forwardRef<VideoPlayerRefHandle, VideoPlayerProps>(({ showId
                   : 'hover:bg-gray-700'
                   }`}
               >
-                {t('details.playerVOSTFR', { number: 2 })}
+                Vidlink
               </button>
 
               <button
@@ -1783,7 +1796,7 @@ const VideoPlayer = forwardRef<VideoPlayerRefHandle, VideoPlayerProps>(({ showId
                   : 'hover:bg-gray-700'
                   }`}
               >
-                {t('details.playerVOSTFR', { number: 3 })}
+                Vidsrc.io
               </button>
 
               <button
@@ -1793,7 +1806,7 @@ const VideoPlayer = forwardRef<VideoPlayerRefHandle, VideoPlayerProps>(({ showId
                   : 'hover:bg-gray-700'
                   }`}
               >
-                {t('details.playerVOSTFR', { number: 4 })}
+                Vidsrc.su
               </button>
 
               <button
@@ -1803,7 +1816,7 @@ const VideoPlayer = forwardRef<VideoPlayerRefHandle, VideoPlayerProps>(({ showId
                   : 'hover:bg-gray-700'
                   }`}
               >
-                {t('details.playerVOSTFR', { number: 5 })}
+                Vidsrc.wtf 1
               </button>
 
               <button
@@ -1813,7 +1826,7 @@ const VideoPlayer = forwardRef<VideoPlayerRefHandle, VideoPlayerProps>(({ showId
                   : 'hover:bg-gray-700'
                   }`}
               >
-                {t('details.playerVOSTFR', { number: 6 })}
+                Vidsrc.wtf 5
               </button>
             </div>
           )}

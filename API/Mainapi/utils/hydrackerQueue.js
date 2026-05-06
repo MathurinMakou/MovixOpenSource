@@ -22,10 +22,17 @@ const WORKER_LOCK_KEY = 'hydracker:worker_lock';
 const RATE_LIMIT_KEY = 'hydracker:rate_limited_until';
 
 // Tunables
+// HYDRACKER_BATCHING_ENABLED=false → bypass complet : la route /decode/:id
+// utilise decodeRequestSync (POST direct, pas de Redis, pas de queue) et
+// le drain timer dans app.js est skip. Comportement identique à l'ancien
+// code synchrone, avant l'introduction de la queue.
+const BATCHING_ENABLED = process.env.HYDRACKER_BATCHING_ENABLED !== 'false';
 const BATCH_SIZE = 50;
 const WORKER_LOCK_TTL_SEC = 60;
 const FAILED_MARKER_TTL_MS = 2 * 60 * 60 * 1000; // 2h
-const STALE_REVALIDATE_MS = 48 * 60 * 60 * 1000; // 48h
+// Bumped 48h → 7d : un lien déjà en cache reste servi sans refetch pendant
+// 7 jours, ce qui réduit la pression sur hydracker pour des contenus stables.
+const STALE_REVALIDATE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // ---------------------------------------------------------------------------
 // Pure helpers (no Redis, no fs side-effects)
@@ -208,8 +215,7 @@ async function decodeRequest(id, deps) {
     redis,
     cacheDir,
     generateCacheKey,
-    getFromCacheNoExpiration,
-    shouldUpdateCache48h
+    getFromCacheNoExpiration
   } = deps;
 
   // 1. Read disk cache
@@ -219,8 +225,9 @@ async function decodeRequest(id, deps) {
       return { failed: cached.payload };
     }
     if (cached.payload.success === true) {
-      // Stale check — return immediately, optionally enqueue for refresh
-      const stale = await shouldUpdateCache48h(cacheDir, cached.cacheKey);
+      // Stale check (STALE_REVALIDATE_MS = 7d) — return immediately, optionally
+      // enqueue for refresh. mtimeMs vient de readDiskCache, pas de re-stat.
+      const stale = (Date.now() - cached.mtimeMs) >= STALE_REVALIDATE_MS;
       if (stale) {
         // Refresh asynchronously by adding to the queue.
         // No await — fire-and-forget, this is best-effort.
@@ -251,6 +258,73 @@ async function decodeRequest(id, deps) {
   }
   const queue_size = await getQueueSize(redis);
   return { queued: true, queue_size };
+}
+
+// ---------------------------------------------------------------------------
+// decodeRequestSync — bypass mode (HYDRACKER_BATCHING_ENABLED=false).
+// POST hydracker directement pour un ID, pas de Redis, pas de queue.
+// Comportement identique à l'ancien code synchrone d'avant la queue.
+// Returns:
+//   { payload }                          — 200 OK
+//   { failed: <marker> }                 — 404
+// ---------------------------------------------------------------------------
+
+async function decodeRequestSync(id, deps) {
+  const {
+    cacheDir,
+    generateCacheKey,
+    getFromCacheNoExpiration,
+    saveToCache,
+    axiosDarkinoRequest,
+    refreshDarkinoSessionIfNeeded
+  } = deps;
+
+  // 1. Read disk cache
+  const cached = await readDiskCache(id, { cacheDir, generateCacheKey, getFromCacheNoExpiration });
+  if (cached) {
+    if (isFailedMarkerActive(cached.payload)) {
+      return { failed: cached.payload };
+    }
+    if (cached.payload.success === true) {
+      return { payload: cached.payload };
+    }
+    // Malformed cache — fall through to refetch
+  }
+
+  const cacheKey = generateCacheKey(`darkiworld_decode_v2_${id}`);
+
+  try {
+    await refreshDarkinoSessionIfNeeded();
+    const resp = await axiosDarkinoRequest({
+      method: 'post',
+      url: `/api/v1/download-premium/${id}`
+    });
+
+    const linkInfo = resp.data?.liens?.[0] || null;
+    if (!linkInfo) {
+      const marker = buildFailedMarker(id, 'Lien non trouvé', 'download-premium response empty');
+      await saveToCache(cacheDir, cacheKey, marker).catch(() => {});
+      return { failed: marker };
+    }
+
+    const payload = buildPayload(id, linkInfo);
+    if (!payload) {
+      const marker = buildFailedMarker(id, 'Lien d\'embed invalide', 'embed-NN.html shape detected');
+      await saveToCache(cacheDir, cacheKey, marker).catch(() => {});
+      return { failed: marker };
+    }
+
+    await saveToCache(cacheDir, cacheKey, payload).catch(() => {});
+    return { payload };
+
+  } catch (err) {
+    const marker = buildFailedMarker(id, 'Erreur upstream hydracker', err?.message || String(err));
+    // Ne pas écrire de marker si un cache existe déjà — évite de l'empoisonner.
+    if (!cached) {
+      await saveToCache(cacheDir, cacheKey, marker).catch(() => {});
+    }
+    return { failed: marker };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -364,6 +438,61 @@ async function drainQueueOnce(deps) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// prewarmDecodeCache — call the new hydracker /download endpoint and seed the
+// disk decode cache for every entry that carries a direct `lien`. Best-effort:
+// silent on failure, never writes a failed marker. Triggered in parallel with
+// the existing /content/liens fetch in routes/darkiworld.js (cache miss path).
+// ---------------------------------------------------------------------------
+
+async function prewarmDecodeCache({ type, id, season, episode, deps }) {
+  const {
+    axiosDarkinoRequest,
+    refreshDarkinoSessionIfNeeded,
+    cacheDir,
+    generateCacheKey,
+    saveToCache,
+    blockedUsers
+  } = deps;
+  const blocked = blockedUsers instanceof Set ? blockedUsers : new Set();
+
+  try { await refreshDarkinoSessionIfNeeded(); } catch (_) { /* non-fatal */ }
+
+  const url = type === 'movie'
+    ? `/api/v1/titles/${id}/download`
+    : `/api/v1/titles/${id}/season/${season}/episode/${episode}/download`;
+
+  let resp;
+  try {
+    resp = await axiosDarkinoRequest({ method: 'get', url });
+  } catch (e) {
+    console.warn(`[hydracker] prewarm upstream fail ${type}/${id}: ${e?.message || e}`);
+    return { warmed: 0, warmedIds: new Set() };
+  }
+
+  const entries = [
+    resp.data?.video,
+    ...(resp.data?.alternative_videos || [])
+  ].filter(Boolean);
+
+  const warmedIds = new Set();
+  const seen = new Set();
+  for (const entry of entries) {
+    if (entry.id == null) continue;
+    const idKey = String(entry.id);
+    if (seen.has(idKey)) continue;
+    if (typeof entry.lien !== 'string' || entry.lien.trim() === '') continue;
+    if (entry.id_user && blocked.has(entry.id_user)) continue;
+    seen.add(idKey);
+    const payload = buildPayload(entry.id, entry);
+    if (!payload) continue;
+    const cacheKey = generateCacheKey(`darkiworld_decode_v2_${entry.id}`);
+    await saveToCache(cacheDir, cacheKey, payload).catch(() => {});
+    warmedIds.add(idKey);
+  }
+  return { warmed: warmedIds.size, warmedIds };
+}
+
 module.exports = {
   // helpers
   chunk,
@@ -383,7 +512,9 @@ module.exports = {
   releaseWorkerLock,
   // orchestrators
   decodeRequest,
+  decodeRequestSync,
   drainQueueOnce,
+  prewarmDecodeCache,
   // disk cache
   readDiskCache,
   // constants
@@ -391,6 +522,7 @@ module.exports = {
   WORKER_LOCK_KEY,
   RATE_LIMIT_KEY,
   BATCH_SIZE,
+  BATCHING_ENABLED,
   WORKER_LOCK_TTL_SEC,
   FAILED_MARKER_TTL_MS,
   STALE_REVALIDATE_MS

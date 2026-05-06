@@ -519,7 +519,6 @@
     "contactDiscord": "Si malgrès tout, aucun lecteur fonctionne, vous pouvez nous contacter sur le discord.",
     "playerVF": "Lecteur VF",
     "playersVOSTFR": "Lecteurs VO/VOSTFR",
-    "playerVOSTFR": "Lecteur VO/VOSTFR {{number}}",
     "playerMulti": "Lecteur Multi",
     "playerOmega": "Lecteur Omega",
     "noAds": "SANS PUBS",
@@ -4157,7 +4156,15 @@
     "debridError": "Erreur lors du débridage",
     "debridDirectLink": "Lien direct débridé",
     "debridDownload": "Télécharger",
-    "vipDebridPromo": "Les membres VIP ont accès au débrideur intégré pour les liens 1fichier"
+    "vipDebridPromo": "Les membres VIP ont accès au débrideur intégré pour les liens 1fichier",
+    "queueWaiting": "File d'attente : {{size}}/50",
+    "queueTimeout": "Décodage trop long, réessaie dans quelques minutes",
+    "rateLimited": "Service surchargé, retry après {{retryAt}}",
+    "rateLimitedLearnMore": "En savoir plus",
+    "rateLimitInfoTitle": "Pourquoi ce délai ?",
+    "rateLimitInfoBody": "Hydracker — la source de téléchargement où Movix récupère tes liens — limite à 200 requêtes de décodage par jour. Pour économiser ce quota, Movix regroupe les demandes par lots de 50 liens : c'est ce qui crée la file d'attente que tu vois parfois. Quand le quota est atteint, le service t'indique l'heure à laquelle les requêtes recommenceront. C'est temporaire et ça repart automatiquement.",
+    "queueUnavailable": "Infrastructure indisponible, réessaie plus tard",
+    "decodeFailed": "Lien non trouvé ou inaccessible"
   },
   "debrid": {
     "title": "Débrideur",

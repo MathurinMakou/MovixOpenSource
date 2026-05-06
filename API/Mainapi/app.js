@@ -646,26 +646,30 @@ function getAppPool() {
 // configured via axiosHelpers.configure earlier in this file).
 const hydrackerQueue = require('./utils/hydrackerQueue');
 const DRAIN_INTERVAL_MS = 5000;
-setInterval(async () => {
-  try {
-    const result = await hydrackerQueue.drainQueueOnce({
-      redis,
-      cacheDir: DOWNLOAD_CACHE_DIR,
-      generateCacheKey,
-      getFromCacheNoExpiration,
-      saveToCache,
-      axiosDarkinoRequest: axiosHelpers.axiosDarkinoRequest,
-      refreshDarkinoSessionIfNeeded
-    });
-    if (result.drained) {
-      console.log(`[hydracker] drained batch of ${result.batchSize}`);
-    } else if (result.error) {
-      console.warn(`[hydracker] drain error: ${result.error} (requeued ${result.requeued || 0})`);
+if (hydrackerQueue.BATCHING_ENABLED) {
+  setInterval(async () => {
+    try {
+      const result = await hydrackerQueue.drainQueueOnce({
+        redis,
+        cacheDir: DOWNLOAD_CACHE_DIR,
+        generateCacheKey,
+        getFromCacheNoExpiration,
+        saveToCache,
+        axiosDarkinoRequest: axiosHelpers.axiosDarkinoRequest,
+        refreshDarkinoSessionIfNeeded
+      });
+      if (result.drained) {
+        console.log(`[hydracker] drained batch of ${result.batchSize}`);
+      } else if (result.error) {
+        console.warn(`[hydracker] drain error: ${result.error} (requeued ${result.requeued || 0})`);
+      }
+    } catch (e) {
+      console.warn(`[hydracker] drain tick threw:`, e?.message || e);
     }
-  } catch (e) {
-    console.warn(`[hydracker] drain tick threw:`, e?.message || e);
-  }
-}, DRAIN_INTERVAL_MS);
+  }, DRAIN_INTERVAL_MS);
+} else {
+  console.log('[hydracker] HYDRACKER_BATCHING_ENABLED=false → drain timer skipped, decode runs synchronously');
+}
 
 // === Unified error handler ===
 app.use((err, req, res, next) => {

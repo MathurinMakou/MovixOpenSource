@@ -2370,9 +2370,9 @@
   // --- BEGIN extension/Chrome/background.js ---
   const VAVOO_BASE_URL = "https://tvvoo.hayd.uk/cfg-fr";
   const WITV_BASE_URL = "https://witv.team";
-  const SOSPLAY_BASE_URL = "https://ligue1live.xyz";
-  const LIVETV_BASE_URL = "https://livetv876.me/frx/";
-  const LIVETV_EMBED_ORIGIN = "https://livetv876.me";
+  const SOSPLAY_BASE_URL = "https://streamonsport.art";
+  const LIVETV_BASE_URL = "https://livetv882.me/frx/";
+  const LIVETV_EMBED_ORIGIN = "https://livetv882.me";
   const LIVETV_EMBED_REFERER = LIVETV_BASE_URL;
   // Backend API URL for got-scraping based extraction
   const API_BASE_URL = "https://api.movix.cash";
@@ -2390,11 +2390,21 @@
   const DEFAULT_EXTRACTION_PREFS = {
     version: 1,
     m3u8: {
-      voe: true, fsvid: true, vidzy: true, vidmoly: true,
-      sibnet: true, uqload: true, doodstream: true, seekstreaming: true,
+      voe: true,
+      fsvid: true,
+      vidzy: true,
+      vidmoly: true,
+      sibnet: true,
+      uqload: true,
+      doodstream: true,
+      seekstreaming: true,
     },
     livetv: {
-      linkzy: true, wiflix: true, sosplay: true, livetv: true, matches: true,
+      linkzy: true,
+      wiflix: true,
+      sosplay: true,
+      livetv: true,
+      matches: true,
     },
   };
   let extractionPrefs = DEFAULT_EXTRACTION_PREFS;
@@ -2407,18 +2417,39 @@
     extractions: 0,
     corsFixed: 0,
     cached: 0,
-    byType: { voe: 0, fsvid: 0, vidzy: 0, vidmoly: 0, sibnet: 0, uqload: 0, doodstream: 0, seekstreaming: 0 },
+    byType: {
+      voe: 0,
+      fsvid: 0,
+      vidzy: 0,
+      vidmoly: 0,
+      sibnet: 0,
+      uqload: 0,
+      doodstream: 0,
+      seekstreaming: 0,
+    },
   };
 
   // Load initial state
   (async () => {
-    const storedEnabled = await gmGetValueCompat("movix_extensionEnabled", null);
+    const storedEnabled = await gmGetValueCompat(
+      "movix_extensionEnabled",
+      null,
+    );
     if (storedEnabled !== null) extensionEnabled = storedEnabled !== false;
     const storedStats = await gmGetValueCompat("movix_stats", null);
     if (storedStats) {
       sessionStats = { ...sessionStats, ...storedStats };
       if (!sessionStats.byType) {
-        sessionStats.byType = { voe: 0, fsvid: 0, vidzy: 0, vidmoly: 0, sibnet: 0, uqload: 0, doodstream: 0, seekstreaming: 0 };
+        sessionStats.byType = {
+          voe: 0,
+          fsvid: 0,
+          vidzy: 0,
+          vidmoly: 0,
+          sibnet: 0,
+          uqload: 0,
+          doodstream: 0,
+          seekstreaming: 0,
+        };
       }
     }
     const storedPrefs = await gmGetValueCompat("movix_extraction_prefs", null);
@@ -2437,7 +2468,16 @@
       extractions: 0,
       corsFixed: 0,
       cached: 0,
-      byType: { voe: 0, fsvid: 0, vidzy: 0, vidmoly: 0, sibnet: 0, uqload: 0, doodstream: 0, seekstreaming: 0 },
+      byType: {
+        voe: 0,
+        fsvid: 0,
+        vidzy: 0,
+        vidmoly: 0,
+        sibnet: 0,
+        uqload: 0,
+        doodstream: 0,
+        seekstreaming: 0,
+      },
     };
     gmSetValueCompat("movix_stats", sessionStats);
   });
@@ -2481,17 +2521,17 @@
         },
         condition: {
           urlFilter: "*",
-        initiatorDomains: [
-          "localhost",
-          "127.0.0.1",
-          "movix.cash",
-          "movix.club",
-          "movix.cash",
-        ],
-        resourceTypes: [
-          "xmlhttprequest",
-          "other",
-          "media",
+          initiatorDomains: [
+            "localhost",
+            "127.0.0.1",
+            "movix.cash",
+            "movix.club",
+            "movix.cash",
+          ],
+          resourceTypes: [
+            "xmlhttprequest",
+            "other",
+            "media",
             "image",
             "script",
             "stylesheet",
@@ -2512,12 +2552,12 @@
    * Returns null if unknown — unknown keys are allowed by default.
    */
   function getLiveTvSourceKey(catalogId) {
-    if (!catalogId || typeof catalogId !== 'string') return null;
-    if (catalogId.startsWith('linkzy_')) return 'linkzy';
-    if (catalogId.startsWith('wiflix_')) return 'wiflix';
-    if (catalogId.startsWith('sosplay_')) return 'sosplay';
-    if (catalogId.startsWith('livetv_')) return 'livetv';
-    if (catalogId.startsWith('matches_')) return 'matches';
+    if (!catalogId || typeof catalogId !== "string") return null;
+    if (catalogId.startsWith("linkzy_")) return "linkzy";
+    if (catalogId.startsWith("wiflix_")) return "wiflix";
+    if (catalogId.startsWith("sosplay_")) return "sosplay";
+    if (catalogId.startsWith("livetv_")) return "livetv";
+    if (catalogId.startsWith("matches_")) return "matches";
     return null;
   }
 
@@ -2576,16 +2616,19 @@
       case "GET_MANIFEST":
         return await getManifest();
       case "GET_CATALOG": {
-        const catalogId = payload?.id || '';
+        const catalogId = payload?.id || "";
         if (!isLiveTvAllowed(catalogId)) {
           return { metas: [], disabled_by_user: true };
         }
         return await getCatalog(payload.type, payload.id, payload?.accessKey);
       }
       case "GET_STREAM": {
-        const channelId = payload?.id || '';
+        const channelId = payload?.id || "";
         if (!isLiveTvAllowed(channelId)) {
-          return { error: "disabled_by_user", source: getLiveTvSourceKey(channelId) };
+          return {
+            error: "disabled_by_user",
+            source: getLiveTvSourceKey(channelId),
+          };
         }
         return await getStream(
           payload.type,
@@ -2600,26 +2643,43 @@
       // === Nexus M3U8 Extraction (runs locally in extension, no server needed) ===
       case "EXTRACT_M3U8": {
         const { url: embedUrl, type: hintedType } = payload || {};
-        const detectedType = hintedType || (Extractors.detectEmbedType ? Extractors.detectEmbedType(embedUrl) : null);
+        const detectedType =
+          hintedType ||
+          (Extractors.detectEmbedType
+            ? Extractors.detectEmbedType(embedUrl)
+            : null);
         if (detectedType && !isEmbedAllowed(detectedType)) {
-          return { success: false, error: "disabled_by_user", type: detectedType };
+          return {
+            success: false,
+            error: "disabled_by_user",
+            type: detectedType,
+          };
         }
         sessionStats.extractions++;
         if (detectedType && sessionStats.byType) {
-          sessionStats.byType[detectedType] = (sessionStats.byType[detectedType] || 0) + 1;
+          sessionStats.byType[detectedType] =
+            (sessionStats.byType[detectedType] || 0) + 1;
         }
         await gmSetValueCompat("movix_stats", sessionStats);
         return await handleExtractM3u8(payload);
       }
       case "EXTRACT_ALL_M3U8": {
         const filteredSources = (payload?.sources || []).filter((source) => {
-          const srcUrl = typeof source === 'string' ? source : (source?.link || source?.url || '');
-          const srcType = Extractors.detectEmbedType ? Extractors.detectEmbedType(srcUrl) : null;
+          const srcUrl =
+            typeof source === "string"
+              ? source
+              : source?.link || source?.url || "";
+          const srcType = Extractors.detectEmbedType
+            ? Extractors.detectEmbedType(srcUrl)
+            : null;
           return !srcType || isEmbedAllowed(srcType);
         });
         sessionStats.extractions++;
         await gmSetValueCompat("movix_stats", sessionStats);
-        return await handleExtractAllM3u8({ ...payload, sources: filteredSources });
+        return await handleExtractAllM3u8({
+          ...payload,
+          sources: filteredSources,
+        });
       }
       case "DETECT_EMBEDS":
         return handleDetectEmbeds(payload);
@@ -2641,7 +2701,12 @@
 
       case "SET_EXTRACTION_PREFS": {
         const incoming = payload?.prefs;
-        if (incoming && incoming.version === 1 && incoming.m3u8 && incoming.livetv) {
+        if (
+          incoming &&
+          incoming.version === 1 &&
+          incoming.m3u8 &&
+          incoming.livetv
+        ) {
           extractionPrefs = {
             version: 1,
             m3u8: { ...DEFAULT_EXTRACTION_PREFS.m3u8, ...incoming.m3u8 },
@@ -2657,14 +2722,14 @@
         return extractionPrefs;
 
       case "GET_CACHE_STATS": {
-        if (typeof Extractors.getCacheSizes === 'function') {
+        if (typeof Extractors.getCacheSizes === "function") {
           return Extractors.getCacheSizes();
         }
         return {};
       }
 
       case "CLEAR_EXTRACTION_CACHE": {
-        if (typeof Extractors.clearCaches === 'function') {
+        if (typeof Extractors.clearCaches === "function") {
           Extractors.clearCaches(payload?.type);
           return { success: true };
         }
@@ -2841,36 +2906,36 @@
     return { embeds: Extractors.detectSupportedEmbeds(sources) };
   }
 
-// === API LOGIC ===
+  // === API LOGIC ===
 
-function getMovixFrontendOrigin() {
-  try {
-    const currentOrigin = pageWindow.location?.origin;
-    const currentHostname = pageWindow.location?.hostname ?? "";
+  function getMovixFrontendOrigin() {
+    try {
+      const currentOrigin = pageWindow.location?.origin;
+      const currentHostname = pageWindow.location?.hostname ?? "";
 
-    if (
-      currentHostname === "movix.cash" ||
-      currentHostname.endsWith(".movix.cash") ||
-      currentHostname === "movix.club" ||
-      currentHostname.endsWith(".movix.club") ||
-      currentHostname === "movix.cash" ||
-      currentHostname.endsWith(".movix.cash")
-    ) {
-      return (currentOrigin || "https://movix.cash").replace(/\/$/, "");
-    }
-  } catch {}
+      if (
+        currentHostname === "movix.cash" ||
+        currentHostname.endsWith(".movix.cash") ||
+        currentHostname === "movix.club" ||
+        currentHostname.endsWith(".movix.club") ||
+        currentHostname === "movix.cash" ||
+        currentHostname.endsWith(".movix.cash")
+      ) {
+        return (currentOrigin || "https://movix.cash").replace(/\/$/, "");
+      }
+    } catch {}
 
-  return "https://movix.cash";
-}
+    return "https://movix.cash";
+  }
 
-function buildBackendApiHeaders(accessKey, extraHeaders = {}) {
-  const frontendOrigin = getMovixFrontendOrigin();
-  const headers = {
-    Accept: "application/json",
-    Origin: frontendOrigin,
-    Referer: `${frontendOrigin}/`,
-    ...extraHeaders,
-  };
+  function buildBackendApiHeaders(accessKey, extraHeaders = {}) {
+    const frontendOrigin = getMovixFrontendOrigin();
+    const headers = {
+      Accept: "application/json",
+      Origin: frontendOrigin,
+      Referer: `${frontendOrigin}/`,
+      ...extraHeaders,
+    };
 
     if (accessKey) {
       headers["x-access-key"] = accessKey;
@@ -3955,7 +4020,9 @@ function buildBackendApiHeaders(accessKey, extraHeaders = {}) {
         console.log(
           `[LIVETV] Resolved ${uniqueStreams.length} direct stream(s) and ${uniqueEmbeds.length} embed(s) locally for ${channelId}`,
         );
-        return { streams: uniqueStreams.length > 0 ? uniqueStreams : uniqueEmbeds };
+        return {
+          streams: uniqueStreams.length > 0 ? uniqueStreams : uniqueEmbeds,
+        };
       }
 
       console.log(
@@ -4227,7 +4294,7 @@ function buildBackendApiHeaders(accessKey, extraHeaders = {}) {
       const combined = `${hostname}${pathname}${search}`;
 
       if (
-        hostname === "ads.livetv876.me" ||
+        hostname === "ads.livetv882.me" ||
         hostname.startsWith("ads.") ||
         hostname.startsWith("ad.")
       ) {
@@ -4274,7 +4341,9 @@ function buildBackendApiHeaders(accessKey, extraHeaders = {}) {
         return false;
       }
 
-      return hostname !== fallbackHost && !hostname.endsWith(`.${fallbackHost}`);
+      return (
+        hostname !== fallbackHost && !hostname.endsWith(`.${fallbackHost}`)
+      );
     } catch (error) {
       return false;
     }

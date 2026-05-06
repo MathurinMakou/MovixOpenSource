@@ -265,7 +265,7 @@ const BOLALOCA_CHANNELS = [
   },
 ];
 
-const LIVETV_BASE_URL = "https://livetv876.me";
+const LIVETV_BASE_URL = "https://livetv882.me";
 const LIVETV_EMBED_REFERER = `${LIVETV_BASE_URL}/`;
 const LIVETV_ALLUPCOMING_PATHS = ["/frx/allupcoming/", "/frx/ads/"];
 const LIVETV_CATEGORIES = {
@@ -1958,7 +1958,7 @@ function shouldIgnoreLiveTvIframeUrl(rawUrl) {
     const combined = `${hostname}${pathname}${search}`;
 
     if (
-      hostname === "ads.livetv876.me" ||
+      hostname === "ads.livetv882.me" ||
       hostname.startsWith("ads.") ||
       hostname.startsWith("ad.")
     ) {

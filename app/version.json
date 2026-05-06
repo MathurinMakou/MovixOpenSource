@@ -1,13 +1,13 @@
 {
-  "version": "2.5.1",
-  "buildNumber": 10,
+  "version": "2.5.2",
+  "buildNumber": 11,
   "apkUrl": "https://github.com/movixcorp/MovixOpenSource/raw/refs/heads/main/app/movix-android.apk",
-  "apkSizeBytes": 72040798,
-  "apkSha256": "715544f47ad1aa7525081e07e7dfc892e58ba57b8419e5ec9d00c524527004c4",
+  "apkSizeBytes": 72040918,
+  "apkSha256": "a9eea4793fbcd23476f0e1ec05fa4be64e7a752417686fff0e00bd4bc185bf53",
   "mandatory": false,
-  "releasedAt": "2026-04-25T16:26:33.137Z",
+  "releasedAt": "2026-05-06T20:49:37.532Z",
   "releaseNotes": {
-    "fr": "",
+    "fr": "Corrections de certaines sources de chaines télés",
     "en": ""
   }
 }

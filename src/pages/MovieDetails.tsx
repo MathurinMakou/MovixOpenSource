@@ -996,7 +996,7 @@ const VideoPlayer = ({ movieId, backdropPath }: { movieId: string; backdropPath?
   const [videoSource, setVideoSource] = useState<string | null>(null);
   const [customSources, setCustomSources] = useState<string[]>([]);
   // Change l'état initial pour ne pas sélectionner de lecteur par défaut et corrige le type
-  type PlayerSourceType = 'primary' | 'vostfr' | 'videasy' | 'vidsrccc' | 'vidsrcsu' | 'vidsrcwtf1' | 'vidsrcwtf5' | 'adfree' | 'multi' | 'omega' | 'darkino' | 'mp4' | number;
+  type PlayerSourceType = 'primary' | 'peachify' | 'vostfr' | 'videasy' | 'vidsrccc' | 'vidsrcsu' | 'vidsrcwtf1' | 'vidsrcwtf5' | 'adfree' | 'multi' | 'omega' | 'darkino' | 'mp4' | number;
   const [selectedSource, setSelectedSource] = useState<PlayerSourceType | null>(null);
   const [frembedAvailable, setFrembedAvailable] = useState(true);
   const [adFreeSource, setAdFreeSource] = useState<string | null>(null);
@@ -1548,7 +1548,7 @@ const VideoPlayer = ({ movieId, backdropPath }: { movieId: string; backdropPath?
         <div className="relative">
           <button
             onClick={() => setShowVostfrOptions(!showVostfrOptions)}
-            className={`px-4 py-2 rounded flex items-center gap-2 ${(selectedSource === 'vostfr' || selectedSource === 'videasy' || selectedSource === 'vidsrccc' || selectedSource === 'vidsrcsu' || selectedSource === 'vidsrcwtf1' || selectedSource === 'vidsrcwtf5')
+            className={`px-4 py-2 rounded flex items-center gap-2 ${(selectedSource === 'peachify' || selectedSource === 'vostfr' || selectedSource === 'videasy' || selectedSource === 'vidsrccc' || selectedSource === 'vidsrcsu' || selectedSource === 'vidsrcwtf1' || selectedSource === 'vidsrcwtf5')
               ? 'bg-red-600 text-white'
               : 'bg-gray-700 hover:bg-gray-600'
               }`}
@@ -1567,12 +1567,13 @@ const VideoPlayer = ({ movieId, backdropPath }: { movieId: string; backdropPath?
 
           {showVostfrOptions && (
             <div className="absolute z-50 top-full left-0 mt-1 bg-gray-800 rounded-lg shadow-lg overflow-hidden min-w-[200px]">
-              <button onClick={() => handleSelectSource('vostfr')} className={`w-full px-4 py-2 text-left ${selectedSource === 'vostfr' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>{t('details.playerVOSTFR', { number: 1 })}</button>
-              <button onClick={() => handleSelectSource('videasy')} className={`w-full px-4 py-2 text-left ${selectedSource === 'videasy' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>{t('details.playerVOSTFR', { number: 2 })}</button>
-              <button onClick={() => handleSelectSource('vidsrccc')} className={`w-full px-4 py-2 text-left ${selectedSource === 'vidsrccc' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>{t('details.playerVOSTFR', { number: 3 })}</button>
-              <button onClick={() => handleSelectSource('vidsrcsu')} className={`w-full px-4 py-2 text-left ${selectedSource === 'vidsrcsu' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>{t('details.playerVOSTFR', { number: 4 })}</button>
-              <button onClick={() => handleSelectSource('vidsrcwtf1')} className={`w-full px-4 py-2 text-left ${selectedSource === 'vidsrcwtf1' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>{t('details.playerVOSTFR', { number: 5 })}</button>
-              <button onClick={() => handleSelectSource('vidsrcwtf5')} className={`w-full px-4 py-2 text-left ${selectedSource === 'vidsrcwtf5' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>{t('details.playerVOSTFR', { number: 6 })}</button>
+              <button onClick={() => handleSelectSource('peachify')} className={`w-full px-4 py-2 text-left ${selectedSource === 'peachify' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>Peachify</button>
+              <button onClick={() => handleSelectSource('vostfr')} className={`w-full px-4 py-2 text-left ${selectedSource === 'vostfr' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>Vidsrc.wtf 3</button>
+              <button onClick={() => handleSelectSource('videasy')} className={`w-full px-4 py-2 text-left ${selectedSource === 'videasy' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>Vidlink</button>
+              <button onClick={() => handleSelectSource('vidsrccc')} className={`w-full px-4 py-2 text-left ${selectedSource === 'vidsrccc' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>Vidsrc.io</button>
+              <button onClick={() => handleSelectSource('vidsrcsu')} className={`w-full px-4 py-2 text-left ${selectedSource === 'vidsrcsu' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>Vidsrc.su</button>
+              <button onClick={() => handleSelectSource('vidsrcwtf1')} className={`w-full px-4 py-2 text-left ${selectedSource === 'vidsrcwtf1' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>Vidsrc.wtf 1</button>
+              <button onClick={() => handleSelectSource('vidsrcwtf5')} className={`w-full px-4 py-2 text-left ${selectedSource === 'vidsrcwtf5' ? 'bg-red-600/70 text-white' : 'hover:bg-gray-700'}`}>Vidsrc.wtf 5</button>
             </div>
           )}
         </div>
@@ -1907,6 +1908,7 @@ const VideoPlayer = ({ movieId, backdropPath }: { movieId: string; backdropPath?
             }
             src={
               selectedSource === 'primary' ? `https://frembed.click/api/film.php?id=${movieId}` :
+                selectedSource === 'peachify' ? `https://peachify.top/embed/movie/${movieId}?sub=French&accent=dc2626` :
                 selectedSource === 'vostfr' ? `https://vidsrc.wtf/api/3/movie/?id=${movieId}` :
                   selectedSource === 'videasy' ? `https://vidlink.pro/movie/${movieId}?primaryColor=0278fd&secondaryColor=a2a2a2&iconColor=eefdec&icons=default&player=default&title=true&poster=true&autoplay=true&nextbutton=false` :
                     selectedSource === 'vidsrccc' ? `https://vidsrc.io/embed/movie?tmdb=${movieId}` :

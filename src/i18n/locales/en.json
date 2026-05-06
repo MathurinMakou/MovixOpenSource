@@ -519,7 +519,6 @@
     "contactDiscord": "If no player works, you can contact us on Discord.",
     "playerVF": "VF Player",
     "playersVOSTFR": "VO/VOSTFR Players",
-    "playerVOSTFR": "VO/VOSTFR Player {{number}}",
     "playerMulti": "Multi Player",
     "playerOmega": "Omega Player",
     "noAds": "NO ADS",
@@ -4157,7 +4156,15 @@
     "debridError": "Error while debriding",
     "debridDirectLink": "Debrided direct link",
     "debridDownload": "Download",
-    "vipDebridPromo": "VIP members have access to the integrated debrider for 1fichier links"
+    "vipDebridPromo": "VIP members have access to the integrated debrider for 1fichier links",
+    "queueWaiting": "Queue: {{size}}/50",
+    "queueTimeout": "Decode took too long, try again in a few minutes",
+    "rateLimited": "Service rate-limited, retry after {{retryAt}}",
+    "rateLimitedLearnMore": "Learn more",
+    "rateLimitInfoTitle": "Why this delay?",
+    "rateLimitInfoBody": "Hydracker — the upstream source where Movix fetches your download links — caps decoding requests at 200 per day. To save that quota, Movix batches requests in groups of 50 links: that's what creates the queue you sometimes see. When the quota is reached, the service tells you when requests will resume. It's temporary and recovers automatically.",
+    "queueUnavailable": "Infrastructure unavailable, try again later",
+    "decodeFailed": "Link not found or inaccessible"
   },
   "debrid": {
     "title": "Debrider",

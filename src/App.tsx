@@ -87,7 +87,7 @@ import ScreenSaver from './components/ScreenSaver';
 import { useIdleTimer } from './hooks/useIdleTimer';
 import { startVipVerification } from './utils/vipUtils';
 import { broadcastAuthChange, clearStoredAuthSession, getResolvedAccountContext } from './utils/accountAuth';
-import { isSyncableStorageKey } from './utils/syncStorage';
+import { isSyncableStorageKey, SYNC_OUTBOX_STORAGE_KEY } from './utils/syncStorage';
 import i18n, { detectInitialLanguage } from './i18n';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -544,6 +544,8 @@ const PersistenceManager = () => {
   React.useEffect(() => {
     (window as any).setProfileDataLoading = (loading: boolean) => {
       isProfileDataLoadingRef.current = loading;
+      const diag = (window as unknown as { __syncDiag?: Record<string, unknown> }).__syncDiag;
+      if (diag) diag.gateLastSetTo = loading;
       debugAppLog('Profile data loading state changed:', loading);
     };
 
@@ -625,6 +627,41 @@ const PersistenceManager = () => {
   useEffect(() => {
     // Setup localStorage sync (now allowed on watch routes)
 
+    // Diagnostic counters (window.__syncDiag) — readable from remote inspector
+    // to pinpoint which guard silently drops sync ops on Firefox mobile.
+    const syncDiag = ((window as unknown as { __syncDiag?: Record<string, unknown> }).__syncDiag = {
+      setItemIntercepted: 0,
+      removeItemIntercepted: 0,
+      diffsQueued: 0,
+      diffsDrained: 0,
+      skipSuppress: 0,
+      skipNotSyncable: 0,
+      skipNoop: 0,
+      skipForceClear: 0,
+      skipGateSet: 0,
+      skipGateRemove: 0,
+      skipGateEnqueue: 0,
+      opsEnqueued: 0,
+      flushGeneralCalled: 0,
+      flushGeneralBlockedGate: 0,
+      sendOpsCalled: 0,
+      sendOpsEmpty: 0,
+      sendOpsBlockedForceClear: 0,
+      sendOpsBlockedGate: 0,
+      sendOpsBlockedUserInfo: 0,
+      sendOpsBlockedNoToken: 0,
+      sendOpsAttempted: 0,
+      sendOpsSuccess: 0,
+      sendOpsError: 0,
+      lastSkippedKey: '',
+      lastUserInfo: '',
+      lastError: '',
+      gateInitialState: undefined as boolean | undefined,
+      gateLastSetTo: undefined as boolean | undefined,
+      profileLoadingExposed: typeof (window as unknown as { setProfileDataLoading?: unknown }).setProfileDataLoading === 'function'
+    });
+    syncDiag.gateInitialState = isProfileDataLoadingRef.current;
+
     // Initialize snapshot of current localStorage
     const prevValues = new Map<string, string | null>();
     for (let i = 0; i < localStorage.length; i++) {
@@ -658,9 +695,10 @@ const PersistenceManager = () => {
 
     const enqueueGeneralOp = (op: any) => {
       // Skip sync during profile data loading (but allow on watch routes)
-      if (isProfileDataLoadingRef.current) return;
+      if (isProfileDataLoadingRef.current) { syncDiag.skipGateEnqueue++; return; }
 
       generalOpsRef.current.push(op);
+      syncDiag.opsEnqueued++;
       if (generalFlushTimeoutRef.current) return;
       generalFlushTimeoutRef.current = setTimeout(() => {
         flushGeneralOps();
@@ -669,29 +707,38 @@ const PersistenceManager = () => {
     };
 
     const sendOps = async (ops: any[]) => {
-      if (!ops.length) return;
+      if (!ops.length) { syncDiag.sendOpsEmpty++; return; }
+      syncDiag.sendOpsCalled++;
 
       // Vérifier si un clear forcé est en cours (erreur 401)
       if ((window as any).__forceClearInProgress) {
+        syncDiag.sendOpsBlockedForceClear++;
         debugAppLog('Skipping sync - force clear in progress');
         return;
       }
 
       // Skip sync during profile data loading (but allow on watch routes)
       if (isProfileDataLoadingRef.current) {
+        syncDiag.sendOpsBlockedGate++;
         debugAppLog('Skipping sync - profile data loading in progress');
         return;
       }
 
       const userInfo = getUserInfo();
       // Only sync for oauth and bip39 users with a selected profile
-      if (!userInfo.type || !userInfo.profileId || !['oauth', 'bip39'].includes(userInfo.type)) return;
+      if (!userInfo.type || !userInfo.profileId || !['oauth', 'bip39'].includes(userInfo.type)) {
+        syncDiag.sendOpsBlockedUserInfo++;
+        syncDiag.lastUserInfo = JSON.stringify(userInfo);
+        return;
+      }
 
       const authToken = localStorage.getItem('auth_token');
       if (!authToken) {
+        syncDiag.sendOpsBlockedNoToken++;
         debugAppLog('Skipping sync - no auth token available');
         return;
       }
+      syncDiag.sendOpsAttempted++;
 
       try {
         for (let index = 0; index < ops.length; index += MAX_SYNC_OPS_PER_REQUEST) {
@@ -712,18 +759,35 @@ const PersistenceManager = () => {
           });
         }
 
+        // NOTE: don't clear SYNC_OUTBOX_STORAGE_KEY here. The outbox holds
+        // un-replayed ops from previous sessions; in-session sendOps only
+        // sees current-session ops. The two sets are disjoint, so clearing
+        // here would silently drop a previous session's ops that hadn't yet
+        // succeeded a replay. ProfileContext.replayOutboxIfAny owns the
+        // outbox lifecycle; backend ops are idempotent so leaving stale
+        // outbox entries doesn't cause incorrect state, only one extra POST
+        // on next boot.
+
+        syncDiag.sendOpsSuccess++;
         debugAppLog('Sync request successful');
         window.dispatchEvent(new CustomEvent('sync_storage_updated'));
       } catch (e) {
+        syncDiag.sendOpsError++;
+        syncDiag.lastError = (e instanceof Error ? e.message : String(e)).slice(0, 200);
         console.error('Delta sync failed', e);
       }
     };
 
     const flushGeneralOps = () => {
+      syncDiag.flushGeneralCalled++;
       const ops = generalOpsRef.current;
       generalOpsRef.current = [];
       // Skip sync during profile data loading (but allow on watch routes)
-      if (!isProfileDataLoadingRef.current && ops.length) sendOps(ops);
+      if (isProfileDataLoadingRef.current) {
+        syncDiag.flushGeneralBlockedGate++;
+        return;
+      }
+      if (ops.length) sendOps(ops);
     };
 
     const flushProgressOps = () => {
@@ -914,13 +978,13 @@ const PersistenceManager = () => {
     };
 
     const processSet = (key: string, oldVal: string | null, newVal: string) => {
-      if (suppressSyncRef.current) return;
-      if (!isSyncableStorageKey(key)) return;
-      if (oldVal === newVal) return;
+      if (suppressSyncRef.current) { syncDiag.skipSuppress++; return; }
+      if (!isSyncableStorageKey(key)) { syncDiag.skipNotSyncable++; return; }
+      if (oldVal === newVal) { syncDiag.skipNoop++; return; }
       // Vérifier si un clear forcé est en cours (erreur 401)
-      if ((window as any).__forceClearInProgress) return;
+      if ((window as any).__forceClearInProgress) { syncDiag.skipForceClear++; return; }
       // Skip sync during profile data loading (but allow on watch routes)
-      if (isProfileDataLoadingRef.current) return;
+      if (isProfileDataLoadingRef.current) { syncDiag.skipGateSet++; syncDiag.lastSkippedKey = key; return; }
       if (isProgressKey(key)) {
         // Accumulate latest patch for progress keys
         const delta = computeObjectPatch(oldVal, newVal);
@@ -953,12 +1017,12 @@ const PersistenceManager = () => {
     };
 
     const processRemove = (key: string) => {
-      if (suppressSyncRef.current) return;
-      if (!isSyncableStorageKey(key)) return;
+      if (suppressSyncRef.current) { syncDiag.skipSuppress++; return; }
+      if (!isSyncableStorageKey(key)) { syncDiag.skipNotSyncable++; return; }
       // Vérifier si un clear forcé est en cours (erreur 401)
-      if ((window as any).__forceClearInProgress) return;
+      if ((window as any).__forceClearInProgress) { syncDiag.skipForceClear++; return; }
       // Skip sync during profile data loading (but allow on watch routes)
-      if (isProfileDataLoadingRef.current) return;
+      if (isProfileDataLoadingRef.current) { syncDiag.skipGateRemove++; syncDiag.lastSkippedKey = key; return; }
       enqueueGeneralOp({ op: 'remove', key });
       if (isProgressKey(key)) {
         progressOpsMapRef.current.delete(key);
@@ -976,6 +1040,7 @@ const PersistenceManager = () => {
       queueMicrotask(() => {
         diffQueueScheduled = false;
         const batch = pendingDiffs.splice(0);
+        syncDiag.diffsDrained += batch.length;
         for (const entry of batch) {
           if (entry.newVal === null) {
             processRemove(entry.key);
@@ -1067,13 +1132,34 @@ const PersistenceManager = () => {
       }
     }, 2000) : null; // Poll every 2 seconds for Safari and Firefox/Librewolf without BroadcastChannel
 
-    const originalSetItem = localStorage.setItem;
-    const originalRemoveItem = localStorage.removeItem;
-    const originalClear = localStorage.clear;
+    // Patch Storage.prototype, NOT the localStorage instance. On Firefox,
+    // `localStorage` is a LegacyPlatformObject with a named-property setter:
+    // assigning `localStorage.setItem = fn` is interpreted as
+    // `setItem("setItem", fn.toString())` and stores the function as a
+    // localStorage entry — leaving the original prototype method in place,
+    // so writes are never intercepted and zero sync requests fire. Patching
+    // the prototype (a plain object, no named-property handler) works on
+    // every engine. The `this === localStorage` guard keeps sessionStorage
+    // writes on the unmodified path.
+    const originalSetItem = Storage.prototype.setItem;
+    const originalRemoveItem = Storage.prototype.removeItem;
+    const originalClear = Storage.prototype.clear;
 
-    localStorage.setItem = function (key: string, value: string) {
+    // Past versions of this code attempted `localStorage.setItem = fn` and
+    // accidentally seeded junk entries on Firefox users. Drop them once.
+    for (const junkKey of ['setItem', 'removeItem', 'clear']) {
+      const v = localStorage.getItem(junkKey);
+      if (v && v.startsWith('function')) {
+        originalRemoveItem.call(localStorage, junkKey);
+        prevValuesRefLocal.current.delete(junkKey);
+      }
+    }
+
+    Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
+      if (this !== localStorage) return originalSetItem.call(this, key, value);
       if (!isLocalStorageAvailable) return;
 
+      syncDiag.setItemIntercepted++;
       const oldVal = prevValuesRefLocal.current.get(key) ?? localStorage.getItem(key);
       originalSetItem.call(localStorage, key, value);
       prevValuesRefLocal.current.set(key, value);
@@ -1084,13 +1170,19 @@ const PersistenceManager = () => {
       // Defer JSON-diff cost off the synchronous write path.
       if (!isProfileDataLoadingRef.current) {
         pendingDiffs.push({ key, oldVal, newVal: value });
+        syncDiag.diffsQueued++;
         scheduleDiffDrain();
+      } else {
+        syncDiag.skipGateSet++;
+        syncDiag.lastSkippedKey = key;
       }
     } as any;
 
-    localStorage.removeItem = function (key: string) {
+    Storage.prototype.removeItem = function (this: Storage, key: string) {
+      if (this !== localStorage) return originalRemoveItem.call(this, key);
       if (!isLocalStorageAvailable) return;
 
+      syncDiag.removeItemIntercepted++;
       const oldVal = prevValuesRefLocal.current.get(key) ?? null;
       originalRemoveItem.call(localStorage, key);
       prevValuesRefLocal.current.delete(key);
@@ -1101,11 +1193,16 @@ const PersistenceManager = () => {
       // Defer downstream sync work into the microtask drain.
       if (!isProfileDataLoadingRef.current) {
         pendingDiffs.push({ key, oldVal, newVal: null });
+        syncDiag.diffsQueued++;
         scheduleDiffDrain();
+      } else {
+        syncDiag.skipGateRemove++;
+        syncDiag.lastSkippedKey = key;
       }
     } as any;
 
-    localStorage.clear = function () {
+    Storage.prototype.clear = function (this: Storage) {
+      if (this !== localStorage) return originalClear.call(this);
       if (!isLocalStorageAvailable) return;
 
       // Snapshot keys (with their previous values) before wiping localStorage.
@@ -1157,6 +1254,27 @@ const PersistenceManager = () => {
     const flushPendingOpsSync = () => {
       if (isProfileDataLoadingRef.current) return;
       if ((window as unknown as { __forceClearInProgress?: boolean }).__forceClearInProgress) return;
+
+      // Synchronously drain pendingDiffs FIRST. The microtask scheduled by
+      // the wrapped setItem/removeItem may not have run yet on Firefox: its
+      // unload sequencing can fire pagehide before the microtask checkpoint
+      // when the user refreshes immediately after a write (e.g., F5 right
+      // after submitting a VIP key). Without this explicit drain, in-flight
+      // diffs would never reach generalOpsRef and the outbox + keepalive
+      // path below would have nothing to flush — losing the user's write
+      // across reload. Chrome reliably drains microtasks before pagehide,
+      // which is why this manifests as "Firefox-only data loss".
+      if (pendingDiffs.length) {
+        const batch = pendingDiffs.splice(0);
+        for (const entry of batch) {
+          if (entry.newVal === null) {
+            processRemove(entry.key);
+          } else {
+            processSet(entry.key, entry.oldVal, entry.newVal);
+          }
+        }
+      }
+
       if (generalFlushTimeoutRef.current) {
         clearTimeout(generalFlushTimeoutRef.current);
         generalFlushTimeoutRef.current = null;
@@ -1181,6 +1299,61 @@ const PersistenceManager = () => {
       if (!userInfo.type || !userInfo.profileId || !['oauth', 'bip39'].includes(userInfo.type)) return;
       const authToken = localStorage.getItem('auth_token');
       if (!authToken) return;
+
+      // Persist a recovery outbox to localStorage BEFORE the keepalive fetch.
+      // fetch keepalive is best-effort: on Firefox the Authorization header
+      // triggers a CORS preflight that the browser may drop on unload, and
+      // both engines cap inflight keepalive bytes. If the request never lands
+      // server-side, the next page load would otherwise wipe localStorage and
+      // restore stale backend state — losing the user's write. ProfileContext
+      // .replayOutboxIfAny reads this on boot and POSTs before the wipe runs.
+      //
+      // We MERGE with any existing outbox for the same user/profile rather
+      // than overwriting. Without merge, a chain of partial failures (replay
+      // 5xx → next-session writes → next unload) would silently drop the
+      // older un-replayed ops every cycle. A hard cap on op count prevents
+      // unbounded growth across many failed cycles; oldest ops are dropped
+      // first since newer ops reflect later state and ops are idempotent.
+      try {
+        const MAX_OUTBOX_OPS = 10000;
+        let mergedOps: Array<Record<string, unknown>> = pending;
+        try {
+          const existingRaw = localStorage.getItem(SYNC_OUTBOX_STORAGE_KEY);
+          if (existingRaw) {
+            const parsed = JSON.parse(existingRaw) as {
+              userType?: string;
+              profileId?: string;
+              ops?: unknown;
+            } | null;
+            if (parsed
+                && parsed.userType === userInfo.type
+                && parsed.profileId === userInfo.profileId
+                && Array.isArray(parsed.ops)
+                && parsed.ops.length > 0) {
+              mergedOps = [
+                ...(parsed.ops as Array<Record<string, unknown>>),
+                ...pending
+              ];
+            }
+          }
+        } catch { /* noop */ }
+
+        if (mergedOps.length > MAX_OUTBOX_OPS) {
+          mergedOps = mergedOps.slice(mergedOps.length - MAX_OUTBOX_OPS);
+        }
+
+        const outboxPayload = {
+          userType: userInfo.type,
+          profileId: userInfo.profileId,
+          userId: userInfo.id || undefined,
+          ops: mergedOps,
+          ts: Date.now()
+        };
+        localStorage.setItem(SYNC_OUTBOX_STORAGE_KEY, JSON.stringify(outboxPayload));
+      } catch (outboxErr) {
+        // Quota exceeded or other write error — proceed with keepalive anyway.
+        console.warn('[outbox] failed to persist outbox at unload:', outboxErr);
+      }
 
       try {
         for (let index = 0; index < pending.length; index += MAX_SYNC_OPS_PER_REQUEST) {
@@ -1225,9 +1398,9 @@ const PersistenceManager = () => {
       if (browserPollingInterval) clearInterval(browserPollingInterval);
       try { channel?.close(); } catch { /* noop */ }
       channel = null;
-      localStorage.setItem = originalSetItem as any;
-      localStorage.removeItem = originalRemoveItem as any;
-      localStorage.clear = originalClear as any;
+      Storage.prototype.setItem = originalSetItem;
+      Storage.prototype.removeItem = originalRemoveItem;
+      Storage.prototype.clear = originalClear;
     };
   }, [isWatchRoute]); // Add isWatchRoute as dependency
 

@@ -2129,10 +2129,11 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(({
     // Définir les lecteurs VO/VOSTFR à conserver (enlever 6, 4 et 2)
     if (showVostfrMenu) {
       const vostfrSources = [
-        { id: 'vostfr', label: t('watch.voVostfrPlayer', { n: 1 }), url: '' }, // Videasy (priorité)
-        { id: 'vidlink', label: t('watch.voVostfrPlayer', { n: 2 }), url: '' }, // vidlink
-        { id: 'vidsrccc', label: t('watch.voVostfrPlayer', { n: 3 }), url: '' }, // vidsrc.io
-        { id: 'vidsrcwtf1', label: t('watch.voVostfrPlayer', { n: 4 }), url: '' } // vidsrc.wtf (v1)
+        { id: 'peachify', label: 'Peachify', url: '' }, // Peachify (priorité, FR subs + accent Movix)
+        { id: 'vostfr', label: 'Videasy', url: '' }, // Videasy
+        { id: 'vidlink', label: 'Vidlink', url: '' }, // vidlink
+        { id: 'vidsrccc', label: 'Vidsrc.io', url: '' }, // vidsrc.io
+        { id: 'vidsrcwtf1', label: 'Vidsrc.wtf 1', url: '' } // vidsrc.wtf (v1)
       ];
 
       vostfrSources.forEach(source => {
@@ -2144,13 +2145,15 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(({
         // boutons Sources/Open dupliqués (rendus dans le parent ET dans l'iframe imbriqué).
         if (tvShowId != null && seasonNumber != null && episodeNumber != null) {
           // TV Show URLs
-          if (source.id === 'vidlink') finalUrl = `https://vidlink.pro/tv/${tvShowId}/${seasonNumber}/${episodeNumber}`; // vidlink.pro
+          if (source.id === 'peachify') finalUrl = `https://peachify.top/embed/tv/${tvShowId}/${seasonNumber}/${episodeNumber}?sub=French&accent=dc2626`;
+          else if (source.id === 'vidlink') finalUrl = `https://vidlink.pro/tv/${tvShowId}/${seasonNumber}/${episodeNumber}`; // vidlink.pro
           else if (source.id === 'vidsrccc') finalUrl = `https://vidsrc.io/embed/tv?tmdb=${tvShowId}&season=${seasonNumber}&episode=${episodeNumber}`;
           else if (source.id === 'vostfr') finalUrl = `https://player.videasy.net/tv/${tvShowId}/${seasonNumber}/${episodeNumber}`; // Videasy
           else if (source.id === 'vidsrcwtf1') finalUrl = `https://vidsrc.wtf/api/1/tv/?id=${tvShowId}&s=${seasonNumber}&e=${episodeNumber}`; // Assumed pattern
         } else if (movieId) {
           // Movie URLs (existing logic)
-          if (source.id === 'vidlink') finalUrl = `https://vidlink.pro/movie/${movieId}`; // vidlink.pro
+          if (source.id === 'peachify') finalUrl = `https://peachify.top/embed/movie/${movieId}?sub=French&accent=dc2626`;
+          else if (source.id === 'vidlink') finalUrl = `https://vidlink.pro/movie/${movieId}`; // vidlink.pro
           else if (source.id === 'vidsrccc') finalUrl = `https://vidsrc.io/embed/movie?tmdb=${movieId}`;
           else if (source.id === 'vostfr') finalUrl = `https://player.videasy.net/movie/${movieId}`;
           else if (source.id === 'vidsrcwtf1') finalUrl = `https://vidsrc.wtf/api/1/movie/?id=${movieId}`;
@@ -7855,24 +7858,27 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(({
                                   className="ml-4 pl-2 border-l-2 border-gray-700 mb-2"
                                 >
                                   {[
-                                    { id: 'vostfr', label: t('watch.voVostfrPlayer', { n: 1 }) },
-                                    { id: 'vidlink', label: t('watch.voVostfrPlayer', { n: 2 }) },
-                                    { id: 'vidsrccc', label: t('watch.voVostfrPlayer', { n: 3 }) },
-                                    { id: 'vidsrcwtf1', label: t('watch.voVostfrPlayer', { n: 4 }) }
+                                    { id: 'peachify', label: 'Peachify' },
+                                    { id: 'vostfr', label: 'Videasy' },
+                                    { id: 'vidlink', label: 'Vidlink' },
+                                    { id: 'vidsrccc', label: 'Vidsrc.io' },
+                                    { id: 'vidsrcwtf1', label: 'Vidsrc.wtf 1' }
                                   ].map((vostfrSource, index) => {
                                     // IMPORTANT: `!= null` au lieu de truthy check — sinon seasonNumber=0
                                     // (épisode spécial / Spéciaux TMDB) tombe dans le fallback '#' qui fait
                                     // charger la page courante en boucle dans l'iframe.
                                     const sourceUrl = movieId ?
-                                      vostfrSource.id === 'vidlink' ? `https://vidlink.pro/movie/${movieId}` :
-                                        vostfrSource.id === 'vidsrccc' ? `https://vidsrc.io/embed/movie?tmdb=${movieId}` :
-                                          vostfrSource.id === 'vostfr' ? `https://player.videasy.net/movie/${movieId}` :
-                                            `https://vidsrc.wtf/api/1/movie/?id=${movieId}` :
+                                      vostfrSource.id === 'peachify' ? `https://peachify.top/embed/movie/${movieId}?sub=French&accent=dc2626` :
+                                        vostfrSource.id === 'vidlink' ? `https://vidlink.pro/movie/${movieId}` :
+                                          vostfrSource.id === 'vidsrccc' ? `https://vidsrc.io/embed/movie?tmdb=${movieId}` :
+                                            vostfrSource.id === 'vostfr' ? `https://player.videasy.net/movie/${movieId}` :
+                                              `https://vidsrc.wtf/api/1/movie/?id=${movieId}` :
                                       (tvShowId != null && seasonNumber != null && episodeNumber != null) ?
-                                        vostfrSource.id === 'vidlink' ? `https://vidlink.pro/tv/${tvShowId}/${seasonNumber}/${episodeNumber}` :
-                                          vostfrSource.id === 'vidsrccc' ? `https://vidsrc.io/embed/tv?tmdb=${tvShowId}&season=${seasonNumber}&episode=${episodeNumber}` :
-                                            vostfrSource.id === 'vostfr' ? `https://player.videasy.net/tv/${tvShowId}/${seasonNumber}/${episodeNumber}` :
-                                              `https://vidsrc.wtf/api/1/tv/?id=${tvShowId}&s=${seasonNumber}&e=${episodeNumber}` :
+                                        vostfrSource.id === 'peachify' ? `https://peachify.top/embed/tv/${tvShowId}/${seasonNumber}/${episodeNumber}?sub=French&accent=dc2626` :
+                                          vostfrSource.id === 'vidlink' ? `https://vidlink.pro/tv/${tvShowId}/${seasonNumber}/${episodeNumber}` :
+                                            vostfrSource.id === 'vidsrccc' ? `https://vidsrc.io/embed/tv?tmdb=${tvShowId}&season=${seasonNumber}&episode=${episodeNumber}` :
+                                              vostfrSource.id === 'vostfr' ? `https://player.videasy.net/tv/${tvShowId}/${seasonNumber}/${episodeNumber}` :
+                                                `https://vidsrc.wtf/api/1/tv/?id=${tvShowId}&s=${seasonNumber}&e=${episodeNumber}` :
                                         '#'; // Fallback if neither movie nor TV info is present
 
                                     // Active state check for VOSTFR sources in main menu
