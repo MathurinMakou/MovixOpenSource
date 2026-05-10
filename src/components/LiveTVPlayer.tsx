@@ -1,7 +1,33 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import Hls from 'hls.js';
-import { MediaPlayer } from 'dashjs';
-import mpegts from 'mpegts.js';
+import type HlsType from 'hls.js';
+import type * as DashjsType from 'dashjs';
+import type MpegtsType from 'mpegts.js';
+
+let HlsLib: typeof HlsType | null = null;
+let DashjsLib: typeof DashjsType | null = null;
+let MpegtsLib: typeof MpegtsType | null = null;
+
+const loadHls = async (): Promise<typeof HlsType> => {
+  if (HlsLib) return HlsLib;
+  const mod = await import('hls.js');
+  HlsLib = mod.default;
+  return HlsLib;
+};
+
+const loadDashjs = async (): Promise<typeof DashjsType> => {
+  if (DashjsLib) return DashjsLib;
+  // dashjs is ESM — `import('dashjs')` resolves to the namespace which already
+  // exposes `MediaPlayer` as a named export. No `.default` indirection needed.
+  DashjsLib = await import('dashjs');
+  return DashjsLib;
+};
+
+const loadMpegts = async (): Promise<typeof MpegtsType> => {
+  if (MpegtsLib) return MpegtsLib;
+  const mod = await import('mpegts.js');
+  MpegtsLib = mod.default;
+  return MpegtsLib;
+};
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, X, Loader2, Volume1, Cast, Airplay, Settings, ArrowLeft, ExternalLink } from 'lucide-react';
 import { isExtensionAvailable, fetchFromExtension } from '../utils/extensionProxy';
@@ -21,61 +47,6 @@ import {
 } from '../utils/castUtils';
 import { PROXIES_EMBED_API } from '../config/runtime';
 
-type ProbedStreamFormat = 'hls' | 'mpegts' | 'dash' | 'unknown';
-
-/**
- * Pre-flight a stream URL: read first chunk + Content-Type to detect format.
- * Used for /proxy/ URLs that can redirect to extensionless raw streams (e.g.,
- * raw MPEG-TS served as application/octet-stream). hls.js would hang forever
- * on such streams because xhr.onload never fires for an infinite response.
- *
- * Returns 'unknown' on timeout/error/CORS so callers fall back to extension-based detection.
- */
-const probeStreamFormat = async (url: string, timeoutMs = 3000): Promise<ProbedStreamFormat> => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-
-    try {
-        const response = await fetch(url, {
-            signal: controller.signal,
-            method: 'GET',
-            mode: 'cors',
-            credentials: 'omit',
-        });
-
-        const contentType = (response.headers.get('content-type') || '').toLowerCase();
-        if (contentType.includes('mpegurl') || contentType.includes('m3u8')) return 'hls';
-        if (contentType.includes('dash+xml')) return 'dash';
-        if (contentType.includes('mp2t') || contentType.includes('mpegts')) return 'mpegts';
-
-        if (!response.body) return 'unknown';
-        reader = response.body.getReader();
-        const { value } = await reader.read();
-        if (!value || value.length === 0) return 'unknown';
-
-        const head = value.subarray(0, Math.min(256, value.length));
-        const text = new TextDecoder('utf-8', { fatal: false }).decode(head);
-
-        if (text.startsWith('#EXTM3U')) return 'hls';
-        if (text.includes('<MPD ') || text.includes('<MPD>')) return 'dash';
-
-        // Raw MPEG-TS: 0x47 sync at offset 0; verify at 188 if available.
-        if (head[0] === 0x47) {
-            if (value.length >= 189) return value[188] === 0x47 ? 'mpegts' : 'unknown';
-            return 'mpegts';
-        }
-
-        return 'unknown';
-    } catch {
-        return 'unknown';
-    } finally {
-        clearTimeout(timeoutId);
-        try { reader?.cancel(); } catch { /* ignore */ }
-        try { controller.abort(); } catch { /* ignore */ }
-    }
-};
-
 // Custom Loader that keeps top-level manifest requests on the proxy URL.
 // Child playlists rewritten by proxiesembed already use stable proxied URLs;
 // forcing them back to the root manifest can break live sequence tracking.
@@ -89,7 +60,9 @@ class ProxyLoader {
     private delegate: any;
 
     constructor(config: any) {
-        const DefaultLoader = (Hls.DefaultConfig as any).loader;
+        // ProxyLoader is only instantiated by HLS.js after `new Hls(...)` has run,
+        // which only happens after `loadHls()` has resolved. So HlsLib is set here.
+        const DefaultLoader = (HlsLib!.DefaultConfig as any).loader;
         this.delegate = new DefaultLoader(config);
     }
 
@@ -374,7 +347,7 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
     // ... (refs and state)
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const hlsRef = useRef<Hls | null>(null);
+    const hlsRef = useRef<HlsType | null>(null);
     const dashRef = useRef<any>(null);
     const mpegtsRef = useRef<any>(null); // Ref for mpegts player
     const controlsTimeoutRef = useRef<NodeJS.Timeout>();
@@ -391,7 +364,6 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
     const bufferAppendRetryRef = useRef<number>(0);
     const hlsRecoveryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const hlsRecoveryInFlightRef = useRef(false);
-    const mpegtsFallbackTriedRef = useRef(false);
     const userPausedRef = useRef(false);
 
     const [streams, setStreams] = useState<Stream[]>([]);
@@ -467,7 +439,7 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
         }
     }, []);
 
-    const getLiveResyncPosition = useCallback((instance: Hls | null, video?: HTMLVideoElement | null) => {
+    const getLiveResyncPosition = useCallback((instance: HlsType | null, video?: HTMLVideoElement | null) => {
         if (!instance) return null;
 
         const liveSyncPosition = instance.liveSyncPosition;
@@ -504,7 +476,7 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
         return null;
     }, []);
 
-    const seekToLiveEdge = useCallback((instance: Hls | null, video: HTMLVideoElement | null) => {
+    const seekToLiveEdge = useCallback((instance: HlsType | null, video: HTMLVideoElement | null) => {
         if (!instance || !video) return false;
 
         const targetPosition = getLiveResyncPosition(instance, video);
@@ -516,7 +488,7 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
         return true;
     }, [getLiveResyncPosition]);
 
-    const scheduleHlsReinit = useCallback((instance: Hls | null, reason: string) => {
+    const scheduleHlsReinit = useCallback((instance: HlsType | null, reason: string) => {
         if (!instance || hlsRef.current !== instance) return;
         if (hlsRecoveryInFlightRef.current) {
             console.log(`[HLS] ${reason}: recovery already in flight`);
@@ -558,7 +530,7 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
         }, 120);
     }, [clearHlsRecoveryTimeout, resetPauseState, resetVideoElement]);
 
-    const scheduleHlsLiveResync = useCallback((instance: Hls | null, reason: string) => {
+    const scheduleHlsLiveResync = useCallback((instance: HlsType | null, reason: string) => {
         if (!instance || hlsRef.current !== instance) return;
         if (hlsRecoveryInFlightRef.current) {
             console.log(`[HLS] ${reason}: recovery already in flight`);
@@ -865,12 +837,9 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
         if (!videoRef.current) return;
         const video = videoRef.current;
 
-        let cancelled = false;
-
         clearHlsRecoveryTimeout();
         hlsRecoveryInFlightRef.current = false;
         bufferAppendRetryRef.current = 0;
-        mpegtsFallbackTriedRef.current = false;
         resetPauseState();
 
         // Cleanup previous instances
@@ -892,6 +861,7 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
         setIsLoading(true);
         setShowControls(true);
 
+        let cancelled = false;
         const isDash = streamUrl.endsWith('.mpd');
 
         // Check if we should force proxy (e.g. for HTTP streams or specific providers)
@@ -1003,11 +973,17 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
 
         console.log('Player selection:', { isMpegTs, isDash, finalUrl });
 
-        const initMpegtsPlayer = (url: string) => {
+        // Lazy-load only the player lib actually needed for this stream type.
+        (async () => {
+        if (isMpegTs) {
+            const mpegts = await loadMpegts();
+            if (cancelled) return;
+            if (mpegts.isSupported()) {
+            console.log('Initializing MPEG-TS player for:', finalUrl);
             const player = mpegts.createPlayer({
                 type: 'mpegts',  // could also be 'mse' type if content type is correct, but 'mpegts' is specific
                 isLive: true,
-                url,
+                url: finalUrl,
                 cors: true, // Important for proxy
             }, {
                 enableWorker: true,
@@ -1030,6 +1006,7 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
 
             player.on(mpegts.Events.ERROR, (type: any, details: any) => {
                 console.error('MPEG-TS Error', type, details);
+                // Fallback logic could go here
                 if (type === mpegts.ErrorTypes.NETWORK_ERROR) {
                     setError(t('liveTV.networkErrorMpegTs'));
                     setIsLoading(false);
@@ -1040,19 +1017,14 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
                 }
             });
 
+            // Loading handling
             video.addEventListener('playing', () => setIsLoading(false), { once: true });
-        };
+            }
 
-        const startEngine = (probedFormat: ProbedStreamFormat) => {
-        if (cancelled) return;
-        const useMpegts = isMpegTs || probedFormat === 'mpegts';
-        const useDash = isDash || probedFormat === 'dash';
-
-        if (useMpegts && mpegts.isSupported()) {
-            console.log('Initializing MPEG-TS player for:', finalUrl);
-            initMpegtsPlayer(finalUrl);
-
-        } else if (useDash) {
+        } else if (isDash) {
+            const dashjs = await loadDashjs();
+            if (cancelled) return;
+            const { MediaPlayer } = dashjs;
             // Initialize Dash Player
             const player = MediaPlayer().create();
             dashRef.current = player;
@@ -1086,7 +1058,10 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
                 }
             });
 
-        } else if (Hls.isSupported()) {
+        } else {
+            const Hls = await loadHls();
+            if (cancelled) return;
+            if (Hls.isSupported()) {
             // Initialize HLS Player
             const hlsConfig: any = {
                 enableWorker: true,
@@ -1269,26 +1244,6 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
                     hls458RetryRef.current = 0;
                 }
 
-                // Raw MPEG-TS served as application/octet-stream (extensionless proxy URLs):
-                // hls.js can't parse it — switch engine to mpegts.js once.
-                if (
-                    details === 'manifestParsingError' &&
-                    !mpegtsFallbackTriedRef.current &&
-                    mpegts.isSupported() &&
-                    hlsRef.current === hls
-                ) {
-                    mpegtsFallbackTriedRef.current = true;
-                    console.warn('[LiveTV] HLS manifestParsingError — falling back to mpegts.js for raw MPEG-TS stream');
-                    try {
-                        hls.destroy();
-                    } catch (e) {
-                        console.error('[LiveTV] hls.destroy() failed before mpegts fallback:', e);
-                    }
-                    hlsRef.current = null;
-                    initMpegtsPlayer(finalUrl);
-                    return;
-                }
-
                 // 404 ou réponse vide — retriable
                 if (status === 404 || isLikelyEmpty200) {
                     if (hls404RetryRef.current < MAX_404_RETRIES) {
@@ -1410,31 +1365,16 @@ const LiveTVPlayer: React.FC<LiveTVPlayerProps> = ({
                     }
                 }
             });
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // Safari native HLS
-            video.src = finalUrl;
-            video.addEventListener('loadedmetadata', () => {
-                setIsLoading(false);
-                video.play().catch(console.error);
-            });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Safari native HLS
+                video.src = finalUrl;
+                video.addEventListener('loadedmetadata', () => {
+                    setIsLoading(false);
+                    video.play().catch(console.error);
+                });
+            }
         }
-        };
-
-        // Probe URLs going through /proxy/: they can redirect to extensionless raw
-        // streams (e.g., MPEG-TS served as application/octet-stream). hls.js's
-        // manifest XHR would hang forever on a never-ending response — pre-flight the
-        // first chunk to pick the right engine before initializing.
-        if (finalUrl.includes('/proxy/')) {
-            probeStreamFormat(finalUrl).then(format => {
-                if (cancelled) return;
-                if (format !== 'unknown') {
-                    console.log('[LiveTV] Probed stream format:', format);
-                }
-                startEngine(format);
-            });
-        } else {
-            startEngine('unknown');
-        }
+        })();
 
         return () => {
             cancelled = true;

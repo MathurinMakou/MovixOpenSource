@@ -55,10 +55,15 @@ function isNetworkError(error: any): boolean {
   return Boolean(error) && !error.response && error.code !== 'ECONNABORTED';
 }
 
-function triggerRedirect() {
+function triggerRedirect(error: unknown) {
   const sw = navigator.serviceWorker?.controller;
   if (!sw) return;
-  sw.postMessage({ type: 'MOVIX_FORCE_REDIRECT' });
+  const e = error as Record<string, unknown> | null | undefined;
+  const errMessage = (e?.message as string) || (e?.code as string) || 'Network error';
+  sw.postMessage({
+    type: 'MOVIX_FORCE_REDIRECT',
+    error: String(errMessage).slice(0, 100),
+  });
 }
 
 function ensureMessageListener() {
@@ -133,7 +138,7 @@ export function registerBlockDetection(axiosInstance: AxiosInstance): void {
           consecutiveNetworkErrors >= THRESHOLD &&
           now - firstErrorAt >= MIN_ERROR_SPAN_MS
         ) {
-          triggerRedirect();
+          triggerRedirect(error);
         }
       }
       return Promise.reject(error);

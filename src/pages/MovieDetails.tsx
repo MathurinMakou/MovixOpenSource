@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import { PrefetchLink as Link } from '@/routing/PrefetchLink';
 import axios from 'axios';
 import { Loader, Video, Star, Calendar, List, Check, ChevronRight, Play, Film, X, Building, MapPin, Languages, Library, Info, ArrowLeft, Image, Download, MessageSquare, AlertTriangle, Archive, CheckCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import AddToListButton from '../components/AddToListButton';
 import DetailsSkeleton from '../components/skeletons/DetailsSkeleton';
 
@@ -344,6 +343,13 @@ const ImagesSection = ({ movieId, images, loading }: { movieId: string; images: 
     setDownloadedCount(0);
 
     try {
+      // Lazy-load jszip + file-saver only when the user triggers the bulk download.
+      const [jszipMod, fileSaverMod] = await Promise.all([
+        import('jszip'),
+        import('file-saver'),
+      ]);
+      const JSZip = jszipMod.default;
+      const { saveAs } = fileSaverMod;
       const zip = new JSZip();
       const folder = zip.folder(`movie-${movieId}-${selectedCategory}`);
 
@@ -2590,7 +2596,7 @@ const MovieDetails = (): JSX.Element => {
       if (backdrops && backdrops.length > 0) {
         // Trier par résolution et choisir la meilleure
         const bestBackdrop = backdrops.sort((a: any, b: any) => b.width - a.width)[0];
-        setBackdropImage(`https://image.tmdb.org/t/p/original${bestBackdrop.file_path}`);
+        setBackdropImage(`https://image.tmdb.org/t/p/w1280${bestBackdrop.file_path}`);
       }
     } catch (error) {
       console.error('Error fetching movie images:', error);
@@ -2751,7 +2757,7 @@ const MovieDetails = (): JSX.Element => {
   const movieDescription = movie.overview?.trim() || `Découvrez ${movie.title} sur Movix.`;
 
   return (
-    <>
+    <MotionConfig reducedMotion="user">
       <SEO
         title={movieTitle}
         description={movieDescription}
@@ -2919,17 +2925,23 @@ const MovieDetails = (): JSX.Element => {
       </style>
 
 
+      {/* Page backdrop — own compositing layer (position:fixed) instead of
+          backgroundAttachment:fixed, which forces full-page re-rasterization
+          on every scroll frame and tanks FPS on heavy details pages. */}
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 z-0 pointer-events-none bg-black"
+        style={backdropImage ? {
+          backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(0,0,0,0.9)), url(${backdropImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        } : undefined}
+      />
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
-        className="min-h-screen bg-black text-white px-4 md:px-8 lg:px-16 py-6"
-        style={{
-          backgroundImage: backdropImage ? `linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(0,0,0,0.9)), url(${backdropImage})` : undefined,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundAttachment: 'fixed'
-        }}
+        className="relative z-10 min-h-screen text-white px-4 md:px-8 lg:px-16 py-6"
       >
         {/* Header avec titre et année */}
         <motion.div
@@ -4529,7 +4541,7 @@ const MovieDetails = (): JSX.Element => {
 
 
       </motion.div>
-    </>
+    </MotionConfig>
   );
 };
 

@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { PrefetchLink as Link } from '@/routing/PrefetchLink';
 import axios from 'axios';
 import { Loader, Video, Star, Calendar, List, Check, FolderPlus, ChevronRight, AlertTriangle, Play, X, MapPin, Languages, Building, ArrowLeft, Image, Download, Shield, EyeOff, MessageSquare, Archive, CheckCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import AddToListMenu from '../components/AddToListMenu';
 import DetailsSkeleton from '../components/skeletons/DetailsSkeleton';
 
@@ -380,6 +379,13 @@ const TVImagesSection = ({ tvId }: { tvId: string }) => {
     setDownloadedCount(0);
 
     try {
+      // Lazy-load jszip + file-saver only when the user triggers the bulk download.
+      const [jszipMod, fileSaverMod] = await Promise.all([
+        import('jszip'),
+        import('file-saver'),
+      ]);
+      const JSZip = jszipMod.default;
+      const { saveAs } = fileSaverMod;
       const zip = new JSZip();
       const folder = zip.folder(`tv-${tvId}-${selectedCategory}`);
 
@@ -3849,7 +3855,7 @@ const TVDetails: React.FC = () => {
       const backdrops = imagesResponse.data.backdrops;
       if (backdrops && backdrops.length > 0) {
         const bestBackdrop = backdrops.sort((a: any, b: any) => b.width - a.width)[0];
-        setBackdropImage(`https://image.tmdb.org/t/p/original${bestBackdrop.file_path}`);
+        setBackdropImage(`https://image.tmdb.org/t/p/w1280${bestBackdrop.file_path}`);
       }
 
       // Récupérer la bande-annonce
@@ -4475,7 +4481,7 @@ const TVDetails: React.FC = () => {
   const tvDescription = tvShow.overview?.trim() || `Découvrez ${tvShow.name} sur Movix.`;
 
   return (
-    <>
+    <MotionConfig reducedMotion="user">
       <SEO
         title={tvTitle}
         description={tvDescription}
@@ -4484,15 +4490,19 @@ const TVDetails: React.FC = () => {
         ogImage={tvSocialImage}
         canonical={tvCanonicalUrl}
       />
+      {/* Page backdrop — own compositing layer (position:fixed) instead of
+          backgroundAttachment:fixed, which forces full-page re-rasterization
+          on every scroll frame and tanks FPS on heavy details pages. */}
       <div
-        className="min-h-screen bg-black"
-        style={{
-          backgroundImage: backdropImage ? `linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(0,0,0,0.9)), url(${backdropImage})` : undefined,
+        aria-hidden="true"
+        className="fixed inset-0 z-0 pointer-events-none bg-black"
+        style={backdropImage ? {
+          backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(0,0,0,0.9)), url(${backdropImage})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          backgroundAttachment: 'fixed'
-        }}
-      >
+        } : undefined}
+      />
+      <div className="relative z-10 min-h-screen">
         <style>{`
         /* Netflix-style poster hover effects - COPIED FROM MovieDetails.tsx */
         .content-row-container {
@@ -7099,7 +7109,7 @@ const TVDetails: React.FC = () => {
 
 
       </div>
-    </>
+    </MotionConfig>
   );
 };
 

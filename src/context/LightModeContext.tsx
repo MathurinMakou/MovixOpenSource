@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 type LightModeSetting = 'auto' | 'on' | 'off';
 
@@ -41,10 +41,10 @@ export const LightModeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return detectWeakDevice();
   }, [lightModeSetting]);
 
-  const setLightModeSetting = (setting: LightModeSetting) => {
+  const setLightModeSetting = useCallback((setting: LightModeSetting) => {
     setLightModeSettingState(setting);
     localStorage.setItem('settings_light_mode', setting);
-  };
+  }, []);
 
   useEffect(() => {
     if (isLightMode) {
@@ -54,8 +54,13 @@ export const LightModeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [isLightMode]);
 
+  const value = useMemo(
+    () => ({ isLightMode, lightModeSetting, setLightModeSetting }),
+    [isLightMode, lightModeSetting, setLightModeSetting]
+  );
+
   return (
-    <LightModeContext.Provider value={{ isLightMode, lightModeSetting, setLightModeSetting }}>
+    <LightModeContext.Provider value={value}>
       {children}
     </LightModeContext.Provider>
   );

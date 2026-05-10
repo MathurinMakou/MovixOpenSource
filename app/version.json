@@ -1,13 +1,13 @@
 {
-  "version": "2.5.2",
-  "buildNumber": 11,
-  "apkUrl": "https://github.com/movixcorp/MovixOpenSource/raw/refs/heads/main/app/movix-android.apk",
-  "apkSizeBytes": 72040918,
-  "apkSha256": "a9eea4793fbcd23476f0e1ec05fa4be64e7a752417686fff0e00bd4bc185bf53",
+  "version": "2.5.3",
+  "buildNumber": 12,
+  "apkUrl": "https://github.com/Movix-STMG/MovixOpenSource/raw/refs/heads/main/app/movix-android.apk",
+  "apkSizeBytes": 72023883,
+  "apkSha256": "6e63593a1c47cee9cf60414219e4e05ef11c7a72e77256ebaffb65af1cc8e977",
   "mandatory": false,
-  "releasedAt": "2026-05-06T20:49:37.532Z",
+  "releasedAt": "2026-05-10T09:47:30.589Z",
   "releaseNotes": {
-    "fr": "Corrections de certaines sources de chaines télés",
+    "fr": "Correction extraction du lecteur Uqload\nL'écran se s'etteint plus lors de l'utilisation de l'app",
     "en": ""
   }
 }

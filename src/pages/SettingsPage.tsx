@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { PrefetchLink as Link } from '@/routing/PrefetchLink';
 import {
   ArrowLeft, Settings, Shield, Monitor, Smartphone, Tablet,
   Copy, X, Snowflake, Activity, Trash2, Crown, Volume2,
@@ -1755,30 +1756,16 @@ const SettingsPage: React.FC = () => {
                   {renderToggle(disableAutoScroll, handleAutoScrollToggle)}
                 </motion.div>
 
-                {/* Smooth scroll */}
+                {/* Smooth scroll — sélecteur unifié 4 options
+                    (Désactivé / Standard / Fluide / Ultra fluide). Le toggle
+                    ON/OFF séparé d'avant a été fusionné dans ce sélecteur :
+                    cliquer "Désactivé" coupe Lenis (scroll natif), les 3 autres
+                    activent + choisissent l'intensité. */}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
-                  className="flex items-center justify-between p-4 bg-gray-800/30 rounded-xl border border-gray-700/40 hover:border-gray-600/50 transition-colors group"
-                >
-                  <div className="flex-1 mr-4">
-                    <h4 className="font-medium text-white mb-0.5 text-sm">{t('settings.smoothScroll')}</h4>
-                    <p className="text-xs text-gray-500 leading-relaxed">
-                      {t('settings.smoothScrollDesc')}
-                    </p>
-                  </div>
-                  {renderToggle(smoothScrollEnabled, handleSmoothScrollToggle)}
-                </motion.div>
-
-                {/* Intensité du scroll fluide — désactivé (opaque) quand smoothScroll off */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: smoothScrollEnabled ? 1 : 0.5, y: 0 }}
-                  transition={{ delay: 0.115 }}
-                  className={`p-4 bg-gray-800/30 rounded-xl border border-gray-700/40 transition-colors ${
-                    smoothScrollEnabled ? 'hover:border-gray-600/50' : 'pointer-events-none'
-                  }`}
+                  className="p-4 bg-gray-800/30 rounded-xl border border-gray-700/40 hover:border-gray-600/50 transition-colors"
                 >
                   <div className="flex flex-col gap-3">
                     <div>
@@ -1786,25 +1773,35 @@ const SettingsPage: React.FC = () => {
                         {t('settings.smoothScrollIntensity', 'Intensité du scroll fluide')}
                       </h4>
                       <p className="text-xs text-gray-500 leading-relaxed">
-                        {t('settings.smoothScrollIntensityDesc', 'Contrôle l\'inertie du défilement. Plus fluide = plus de glisse mais réponse moins immédiate.')}
+                        {t('settings.smoothScrollIntensityDesc', 'Contrôle l\'inertie du défilement. Plus fluide = plus de glisse mais réponse moins immédiate. Choisis « Désactivé » pour repasser au scroll natif (recommandé sur configs lentes).')}
                       </p>
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {([
+                        { id: 'off',      labelKey: 'settings.smoothScrollIntensity.off',      fallback: 'Désactivé' },
                         { id: 'standard', labelKey: 'settings.smoothScrollIntensity.standard', fallback: 'Standard' },
                         { id: 'fluid',    labelKey: 'settings.smoothScrollIntensity.fluid',    fallback: 'Fluide' },
                         { id: 'ultra',    labelKey: 'settings.smoothScrollIntensity.ultra',    fallback: 'Ultra fluide' },
                       ] as const).map((opt) => {
-                        const active = smoothScrollIntensity === opt.id;
+                        const isOff = opt.id === 'off';
+                        const active = isOff
+                          ? !smoothScrollEnabled
+                          : (smoothScrollEnabled && smoothScrollIntensity === opt.id);
                         return (
                           <button
                             key={opt.id}
                             type="button"
-                            onClick={() => handleSmoothScrollIntensityChange(opt.id)}
-                            disabled={!smoothScrollEnabled}
+                            onClick={() => {
+                              if (isOff) {
+                                if (smoothScrollEnabled) handleSmoothScrollToggle();
+                              } else {
+                                if (!smoothScrollEnabled) handleSmoothScrollToggle();
+                                handleSmoothScrollIntensityChange(opt.id);
+                              }
+                            }}
                             className={`text-xs font-medium rounded-lg px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 ${
                               active
-                                ? 'bg-indigo-500 text-white shadow-inner'
+                                ? (isOff ? 'bg-gray-600 text-white shadow-inner' : 'bg-indigo-500 text-white shadow-inner')
                                 : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/70'
                             }`}
                           >

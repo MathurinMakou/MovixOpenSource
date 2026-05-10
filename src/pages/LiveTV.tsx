@@ -5,7 +5,8 @@ import { Tv, Loader2, Radio, Search, Crown, Puzzle, ChevronDown, Lock, Zap, Wifi
 import { toast } from 'sonner';
 
 
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+import { PrefetchLink as Link } from '@/routing/PrefetchLink';
 import { useTranslation } from 'react-i18next';
 import { isExtensionAvailable, fetchFromExtension } from '../utils/extensionProxy';
 import { isLiveTvSourceEnabled, subscribeToPrefsChanges, type LiveTvSourceKey } from '../utils/extractionPrefs';

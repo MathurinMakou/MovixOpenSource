@@ -1,28 +1,10 @@
-import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigationType, useNavigate } from 'react-router-dom';
+import React, { useEffect, useLayoutEffect, useState, useRef, lazy } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigationType, useNavigate, matchPath } from 'react-router-dom';
 import { Toaster } from './components/ui/sonner';
 import { TooltipProvider } from './components/ui/tooltip';
 import Header from './components/Header';
 import Home from './pages/Home';
-import Search from './pages/Search';
-import MovieDetails from './pages/MovieDetails';
-import TVDetails from './pages/TVDetails';
-import Movies from './pages/Movies';
-import Anime from './pages/Anime';
-import TVShows from './pages/TVShows';
-import Collections from './pages/Collections';
-import CollectionDetails from './pages/CollectionDetails';
-import GenrePage from './pages/GenrePage';
-import WatchMovie from './pages/Watch/WatchMovie';
-import WatchTv from './pages/Watch/WatchTv';
-import ProviderContent from './pages/ProviderContent';
-import ProviderCatalogPage from './pages/ProviderCatalogPage';
-import RoulettePage from './pages/RoulettePage';
-import DiscordAuth from './components/DiscordAuth';
-import GoogleAuth from './components/GoogleAuth';
 import DnsBlockBanner from './components/DnsBlockBanner';
-import HelpRouter from './pages/help/HelpRouter';
-import Profile from './pages/Profile';
 import { AdFreePopupProvider } from './context/AdFreePopupContext';
 import { SearchProvider } from './context/SearchContext';
 import { AuthProvider } from './context/AuthContext';
@@ -31,58 +13,24 @@ import { VipModalProvider } from './context/VipModalContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
 import { TurnstileProvider } from './context/TurnstileContext';
 
-import LiveTV from './pages/LiveTV';
-import PersonDetails from './pages/PersonDetails';
-import SuggestionPage from './pages/SuggestionPage';
-import ExtensionPage from './pages/ExtensionPage';
-import AppDownloadPage from './pages/AppDownloadPage';
-import SharedListPage from './pages/SharedListPage';
-import SharedListsCatalogPage from './pages/SharedListsCatalogPage';
 import NotFound from './pages/NotFound';
 import 'video.js/dist/video-js.css';
 import './styles/videojs-custom.css';
-import WatchAnime from './pages/Watch/WatchAnime';
-import WatchPartyCreate from './pages/WatchPartyCreate';
-import WatchPartyRoom from './pages/WatchPartyRoom';
-import WatchPartyJoin from './pages/WatchPartyJoin';
-import WatchPartyList from './pages/WatchPartyList';
 import axios from 'axios';
 import Footer from './components/Footer';
 import CreateAccount from './pages/CreateAccount';
 import LoginBip39 from './pages/LoginBip39';
-import AlertsPage from './pages/AlertsPage';
 import { AlertService } from './services/alertService';
 import NotificationToast from './components/NotificationToast';
 import { NotificationData } from './types/alerts';
-import DMCA from './pages/DMCA';
-import AdminPage from './pages/AdminPage';
-import DownloadPage from './pages/DownloadPage';
-import DebridPage from './pages/DebridPage';
-import ProfileSelection from './pages/ProfileSelection';
-import ProfileManagement from './pages/ProfileManagement';
 import RedirectPopup from './components/RedirectPopup';
-import WishboardPage from './pages/Greenlight/WishboardPage';
-import WishboardNewRequest from './pages/Greenlight/WishboardNewRequest';
-import WishboardUserRequests from './pages/Greenlight/WishboardUserRequests';
-import SubmitLinkPage from './pages/Greenlight/SubmitLinkPage';
-import VipPage from './pages/VipPage';
-import VipDonatePage from './pages/VipDonatePage';
-import VipInvoicesPage from './pages/VipInvoicesPage';
-import VipInvoicePage from './pages/VipInvoicePage';
-import VipGiftPage from './pages/VipGiftPage';
-import WhatIsMovixPage from './pages/WhatIsMovixPage';
-import Privacy from './pages/Privacy';
-import TermsOfService from './pages/TermsOfService';
+import { TopProgressBar } from './components/TopProgressBar';
 import SmoothScroll from './components/SmoothScroll';
-import WrappedPage from './pages/WrappedPage';
-import CineGraphPage from './pages/CineGraph';
-import SettingsPage from './pages/SettingsPage';
-import Top10Page from './pages/Top10Page';
-import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
-import FranceTVBrowse from './pages/FranceTV/FranceTVBrowse';
-import FranceTVInfo from './pages/FranceTV/FranceTVInfo';
-import FranceTVPlayer from './pages/FranceTV/FranceTVPlayer';
 import AprilFoolsAdminPage from './pages/AprilFoolsAdminPage';
+import ProfileSelection from './pages/ProfileSelection';
+import { ROUTES, type RouteEntry } from './routing/registry';
+import { DelayedSuspense } from './components/DelayedSuspense';
+import { RouteProgressBar } from './components/RouteProgressBar';
 import ScreenSaver from './components/ScreenSaver';
 import { useIdleTimer } from './hooks/useIdleTimer';
 import { startVipVerification } from './utils/vipUtils';
@@ -517,6 +465,53 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
 
   const isAuthenticated = isDiscordAuth || isGoogleAuth || isBip39Auth || isVipAuth || isVipUser;
   return isAuthenticated ? children : <Navigate to="/login" />;
+};
+
+// Cache module-level des composants Lazy par path. Sans ça, chaque appel à
+// renderRouteEntry (ROUTES.map à chaque render d'App) créerait une nouvelle
+// instance lazy() avec son propre cache de chunk → instabilité d'identité.
+const lazyComponentCache = new Map<string, React.LazyExoticComponent<React.ComponentType<unknown>>>();
+const getCachedLazy = (entry: RouteEntry) => {
+  let cached = lazyComponentCache.get(entry.path);
+  if (!cached) {
+    cached = lazy(entry.loader as () => Promise<{ default: React.ComponentType<unknown> }>);
+    lazyComponentCache.set(entry.path, cached);
+  }
+  return cached;
+};
+
+// Wrapper qui injecte `key={location.pathname}` sur le composant lazy. Sans ça,
+// quand l'utilisateur navigue entre deux URLs matchant le même Route pattern
+// (ex. /movie/abc → /movie/xyz), React Router réutilise l'instance composant
+// avec juste les params updated. Les useState de la page (movie, cast, crew,
+// loading…) gardent les valeurs de l'ancien id pendant que le nouveau fetch
+// tourne — l'utilisateur voit l'ancien film tant que TMDB répond pas.
+// Avec key={pathname}, la clé change → React remount le composant → state reset
+// → loader/skeleton affiché jusqu'au nouveau fetch.
+const RouteLazyContent: React.FC<{
+  Lazy: React.LazyExoticComponent<React.ComponentType<unknown>>;
+  fallback: React.ReactNode;
+}> = ({ Lazy, fallback }) => {
+  const location = useLocation();
+  return (
+    <DelayedSuspense fallback={fallback}>
+      <Lazy key={location.pathname} />
+    </DelayedSuspense>
+  );
+};
+
+const renderRouteEntry = (entry: RouteEntry) => {
+  const Lazy = getCachedLazy(entry);
+  let element: React.ReactNode = (
+    <RouteLazyContent
+      Lazy={Lazy}
+      fallback={entry.fallback ?? <RouteProgressBar />}
+    />
+  );
+  if (entry.guard === 'private') {
+    element = <PrivateRoute>{element}</PrivateRoute>;
+  }
+  return <Route key={entry.path} path={entry.path} element={element} />;
 };
 
 // PersistenceManager component to sync localStorage with backend (disabled for guests and VIP)
@@ -1746,6 +1741,20 @@ const AppWithIntro: React.FC = () => {
     });
   }, []);
 
+  // Idle prefetch (Milestone 6): preload high-traffic route chunks shortly
+  // after mount via requestIdleCallback (setTimeout fallback for Safari/FF).
+  useEffect(() => {
+    const IDLE_PREFETCH = ['/movies', '/tv-shows', '/anime', '/search'];
+    // @ts-expect-error - requestIdleCallback not in all TS DOM lib versions
+    const ric = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 1500));
+    ric(() => {
+      for (const path of IDLE_PREFETCH) {
+        const entry = ROUTES.find(r => matchPath(r.path, path));
+        entry?.loader({ silent: true }).catch(() => {/* swallow — best-effort prefetch */});
+      }
+    }, { timeout: 3000 });
+  }, []);
+
   return (
     <div className="min-h-screen bg-black text-white relative overflow-hidden">
       {/* Intro overlay — le site charge derrière */}
@@ -1777,83 +1786,27 @@ const AppWithIntro: React.FC = () => {
         <DefaultProfileNudge />
         <ProfileGate>
           <Routes>
+            {/* Eager — landing page, kept in main bundle */}
             <Route path="/" element={<Home />} />
-            <Route path="/search" element={<Search />} />
-            <Route path="/movies" element={<Movies />} />
-            <Route path="/anime" element={<Anime />} />
-            <Route path="/tv-shows" element={<TVShows />} />
-            <Route path="/collections" element={<Collections />} />
-            <Route path="/collection/:id" element={<CollectionDetails />} />
-            <Route path="/movie/:id" element={<MovieDetails />} />
-            <Route path="/tv/:id" element={<TVDetails />} />
-            <Route path="/download/:type/:id" element={<DownloadPage />} />
-            <Route path="/debrid" element={<DebridPage />} />
-            <Route path="/genre/:mediaType/:genreId" element={<GenrePage />} />
-            <Route path="/roulette" element={<RoulettePage />} />
-            <Route path="/provider/:providerId" element={<ProviderContent />} />
-            <Route path="/provider/:providerId/:type" element={<ProviderCatalogPage />} />
-            <Route path="/provider/:providerId/:type/:genreId" element={<ProviderCatalogPage />} />
-            <Route path="/auth" element={<DiscordAuth />} />
-            <Route path="/auth/google" element={<GoogleAuth />} />
-            <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
-            <Route path="/create-account" element={<CreateAccount />} />
+
+            {/* Routes spéciales avec props ou logique conditionnelle */}
             <Route path="/login-bip39" element={<LoginBip39 />} />
+            <Route path="/create-account" element={<CreateAccount />} />
             <Route path="/link-bip39" element={<LoginBip39 mode="link" />} />
             <Route path="/link-bip39/create" element={<CreateAccount mode="link" />} />
-            <Route path="/person/:id" element={<PersonDetails />} />
-            <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
-            <Route path="/alerts" element={<AlertsPage />} />
-            <Route path="/live-tv" element={<LiveTV />} />
-            <Route path="/watch/movie/:tmdbid" element={<WatchMovie />} />
-            <Route path="/watch/tv/:tmdbid/s/:season/e/:episode" element={<WatchTv />} />
-            <Route path="/watch/anime/:id/season/:season/episode/:episode" element={<WatchAnime />} />
-            {/* Watch Party Routes */}
-            <Route path="/watchparty/create" element={<WatchPartyCreate />} />
-            <Route path="/watchparty/room/:roomId" element={<WatchPartyRoom />} />
-            <Route path="/watchparty/join" element={<WatchPartyJoin />} />
-            <Route path="/watchparty/join/:code" element={<WatchPartyJoin />} />
-            <Route path="/watchparty/list" element={<WatchPartyList />} />
-            <Route path="/suggestion" element={<SuggestionPage />} />
-            <Route path="/extension" element={<ExtensionPage />} />
-            <Route path="/app" element={<AppDownloadPage />} />
-            <Route path="/list/:shareCode" element={<SharedListPage />} />
-            <Route path="/list-catalog" element={<SharedListsCatalogPage />} />
-            <Route path="/dmca" element={<DMCA />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path={APRIL_FOOLS_ADMIN_PATH} element={isAprilFoolsAdminRouteEnabled ? <AprilFoolsAdminPage /> : <Navigate to="/" replace />} />
-            <Route path="/profile-selection" element={<ProfileSelection />} />
-            <Route path="/profile-management" element={<ProfileManagement />} />
-            {/* Wishboard / Greenlight Routes */}
-            <Route path="/wishboard" element={<WishboardPage />} />
-            <Route path="/wishboard/new" element={<WishboardNewRequest />} />
-            <Route path="/wishboard/my-requests" element={<WishboardUserRequests />} />
-            <Route path="/wishboard/submit-link" element={<SubmitLinkPage />} />
-            {/* VIP Route */}
-            <Route path="/vip" element={<VipPage />} />
-            <Route path="/vip/don" element={<VipDonatePage />} />
-            <Route path="/vip/invoices" element={<VipInvoicesPage />} />
-            <Route path="/vip/invoice/:publicId" element={<VipInvoicePage />} />
-            <Route path="/vip/cadeau/:giftToken" element={<VipGiftPage />} />
-            {/* What is Movix Route */}
-            <Route path="/about" element={<WhatIsMovixPage />} />
-            <Route path="/help/*" element={<HelpRouter />} />
-            <Route path="/privacy" element={<Privacy />} />
-            <Route path="/terms-of-service" element={<TermsOfService />} />
             <Route path="/terms" element={<Navigate to="/terms-of-service" replace />} />
-            {/* CinéGraph Route */}
-            <Route path="/cinegraph" element={<CineGraphPage />} />
-            {/* Settings Route */}
-            <Route path="/settings" element={<SettingsPage />} />
-            {/* Top 10 Route */}
-            <Route path="/top10" element={<Top10Page />} />
-            {/* France.tv Routes */}
-            <Route path="/ftv" element={<FranceTVBrowse />} />
-            <Route path="/ftv/info/:encoded" element={<FranceTVInfo />} />
-            <Route path="/ftv/watch/:encoded" element={<FranceTVPlayer />} />
-            {/* Wrapped Route */}
-            <Route path="/wrapped" element={<WrappedPage />} />
-            <Route path="/wrapped/:year" element={<WrappedPage />} />
-            {/* Route catch-all pour la page 404 */}
+            <Route path="/profile-selection" element={<ProfileSelection />} />
+            <Route
+              path={APRIL_FOOLS_ADMIN_PATH}
+              element={isAprilFoolsAdminRouteEnabled
+                ? <AprilFoolsAdminPage />
+                : <Navigate to="/" replace />}
+            />
+
+            {/* Toutes les autres routes — depuis le registry */}
+            {ROUTES.map(renderRouteEntry)}
+
+            {/* 404 — eager (frequently entered cold) */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </ProfileGate>
@@ -1948,6 +1901,7 @@ function App() {
                     <IntroProvider>
                       <IOSHomeScreenHandler />
                       <AppWithIntro />
+                      <TopProgressBar />
                       <Toaster position="bottom-right" richColors />
                       <DnsBlockBanner />
                     </IntroProvider>
