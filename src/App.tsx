@@ -12,6 +12,7 @@ import { AdWarningProvider } from './context/AdWarningContext';
 import { VipModalProvider } from './context/VipModalContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
 import { TurnstileProvider } from './context/TurnstileContext';
+import { LightModeProvider, useLightMode } from './context/LightModeContext';
 
 import NotFound from './pages/NotFound';
 import 'video.js/dist/video-js.css';
@@ -38,7 +39,7 @@ import { broadcastAuthChange, clearStoredAuthSession, getResolvedAccountContext 
 import { isSyncableStorageKey, SYNC_OUTBOX_STORAGE_KEY } from './utils/syncStorage';
 import i18n, { detectInitialLanguage } from './i18n';
 import { useTranslation } from 'react-i18next';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import IntroAnimation from './components/IntroAnimation';
 import { IntroProvider, useIntro } from './context/IntroContext';
 import { APRIL_FOOLS_ADMIN_PATH, isAprilFoolsAdminEnabled } from './utils/aprilFools';
@@ -1837,7 +1838,7 @@ const EmbedBlockPage = () => (
         {i18n.t('embed.message')}
       </p>
       <a
-        href="https://movix.cash"
+        href="https://movix.tax"
         target="_blank"
         rel="noopener noreferrer"
         className="mt-2 inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition sm:py-3 sm:px-6 lg:py-4 lg:px-8"
@@ -1866,6 +1867,19 @@ const MaintenancePage = ({ onContinue }: { onContinue: () => void }) => (
   </div>
 );
 
+// Wraps the tree in a <MotionConfig> tied to the Mode léger / animation prefs.
+// When `transitions` is disabled (manually or because Mode léger is on),
+// framer-motion treats EVERY animation as if `prefers-reduced-motion: reduce`
+// were set — initial/animate/exit are skipped on transform/opacity for free.
+const AnimationMotionConfig: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { effectivePrefs } = useLightMode();
+  return (
+    <MotionConfig reducedMotion={effectivePrefs.transitions ? 'user' : 'always'}>
+      {children}
+    </MotionConfig>
+  );
+};
+
 function App() {
   const [forceContinue, setForceContinue] = React.useState(false);
 
@@ -1891,6 +1905,8 @@ function App() {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <TooltipProvider delayDuration={300}>
+      <LightModeProvider>
+      <AnimationMotionConfig>
       <SearchProvider>
         <AdFreePopupProvider>
           <AuthProvider>
@@ -1912,6 +1928,8 @@ function App() {
           </AuthProvider>
         </AdFreePopupProvider>
       </SearchProvider>
+      </AnimationMotionConfig>
+      </LightModeProvider>
       </TooltipProvider>
     </BrowserRouter>
   );

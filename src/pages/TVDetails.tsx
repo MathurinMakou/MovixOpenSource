@@ -3211,52 +3211,90 @@ const TVDetails: React.FC = () => {
     hasProgress: false
   });
 
+  type ContinueWatchingTvEntry = {
+    id: number;
+    currentEpisode?: {
+      season: number;
+      episode: number;
+    };
+    lastAccessed?: string;
+  };
+
   useEffect(() => {
     // Load any existing watch progress
     if (id) {
       try {
-        // First, check the continueWatching localStorage data
-        const continueWatching = JSON.parse(localStorage.getItem('continueWatching') || '{"movies": [], "tv": []}');
-
-        if (continueWatching.tv && Array.isArray(continueWatching.tv)) {
-          const showIdInt = parseInt(id);
-          const tvShow = continueWatching.tv.find((show: any) => show.id === showIdInt);
-
-          if (tvShow && tvShow.currentEpisode) {
-            // Try to get detailed progress data for this specific episode
-            const progressKey = `progress_tv_${id}_s${tvShow.currentEpisode.season}_e${tvShow.currentEpisode.episode}`;
-            const progressValue = localStorage.getItem(progressKey);
-            let position = 0;
-            let duration = 0;
-
-            if (progressValue) {
-              try {
-                const progressData = JSON.parse(progressValue);
-                position = Number(progressData.position) || 0;
-                duration = Number(progressData.duration) || 0;
-              } catch (error) {
-                console.error('Error parsing progress data:', error);
-              }
-            }
-
-            setContinueWatchingData({
-              seasonNumber: tvShow.currentEpisode.season,
-              episodeNumber: tvShow.currentEpisode.episode,
-              position: position,
-              duration: duration,
-              hasProgress: true
-            });
-            return;
-          }
-        }
-
-        // Fallback: check old progress_tv_* keys for backward compatibility
         let latestTimestamp = -1;
         let latestSeason = 1;
         let latestEpisode = 1;
         let latestPosition = 0;
         let latestDuration = 0;
 
+        const considerCandidate = (
+          seasonNumber: number,
+          episodeNumber: number,
+          timestampMs: number,
+          position = 0,
+          duration = 0
+        ) => {
+          if (!Number.isFinite(seasonNumber) || !Number.isFinite(episodeNumber)) return;
+          if (seasonNumber <= 0 || episodeNumber <= 0) return;
+          if (!Number.isFinite(timestampMs)) return;
+
+          if (timestampMs > latestTimestamp) {
+            latestTimestamp = timestampMs;
+            latestSeason = seasonNumber;
+            latestEpisode = episodeNumber;
+            latestPosition = Number(position) || 0;
+            latestDuration = Number(duration) || 0;
+          }
+        };
+
+        // First, check the continueWatching localStorage data
+        const continueWatching = JSON.parse(localStorage.getItem('continueWatching') || '{"movies": [], "tv": []}') as {
+          tv?: ContinueWatchingTvEntry[];
+        };
+
+        if (continueWatching.tv && Array.isArray(continueWatching.tv)) {
+          const showIdInt = parseInt(id);
+          const tvShow = continueWatching.tv.find((show) => show.id === showIdInt);
+
+          if (tvShow && tvShow.currentEpisode) {
+            const seasonFromContinue = Number(tvShow.currentEpisode.season);
+            const episodeFromContinue = Number(tvShow.currentEpisode.episode);
+            const continueTs = tvShow.lastAccessed ? Date.parse(tvShow.lastAccessed) : NaN;
+
+            // Try to get detailed progress data for this specific episode
+            const progressKey = `progress_tv_${id}_s${seasonFromContinue}_e${episodeFromContinue}`;
+            const progressValue = Number.isFinite(seasonFromContinue) && Number.isFinite(episodeFromContinue)
+              ? localStorage.getItem(progressKey)
+              : null;
+            let position = 0;
+            let duration = 0;
+            let progressTs = NaN;
+
+            if (progressValue) {
+              try {
+                const progressData = JSON.parse(progressValue);
+                position = Number(progressData.position) || 0;
+                duration = Number(progressData.duration) || 0;
+                progressTs = progressData.timestamp ? Date.parse(progressData.timestamp) : NaN;
+              } catch (error) {
+                console.error('Error parsing progress data:', error);
+              }
+            }
+
+            const effectiveTimestamp = Number.isFinite(progressTs)
+              ? progressTs
+              : Number.isFinite(continueTs)
+                ? continueTs
+                : NaN;
+
+            considerCandidate(seasonFromContinue, episodeFromContinue, effectiveTimestamp, position, duration);
+          }
+        }
+
+        // Also check all progress_tv_* keys and keep the most recent by timestamp
         const keyPrefix = `progress_tv_${id}_s`;
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
@@ -3272,13 +3310,13 @@ const TVDetails: React.FC = () => {
             const progressData = JSON.parse(value);
             const ts = progressData.timestamp ? Date.parse(progressData.timestamp) : NaN;
             if (!Number.isFinite(ts)) continue;
-            if (ts > latestTimestamp) {
-              latestTimestamp = ts;
-              latestSeason = season;
-              latestEpisode = episode;
-              latestPosition = Number(progressData.position) || 0;
-              latestDuration = Number(progressData.duration) || 0;
-            }
+            considerCandidate(
+              season,
+              episode,
+              ts,
+              Number(progressData.position) || 0,
+              Number(progressData.duration) || 0
+            );
           } catch (_) {
             // ignore malformed entries
           }
@@ -3289,7 +3327,7 @@ const TVDetails: React.FC = () => {
           let effectiveSeason = latestSeason;
           let effectiveEpisode = latestEpisode;
 
-          if (availableSeasons.length > 0 && !availableSeasons.includes(effectiveSeason)) {
+          if (!animeMode && availableSeasons.length > 0 && !availableSeasons.includes(effectiveSeason)) {
             effectiveSeason = defaultStartSeason;
             effectiveEpisode = 1;
           }
@@ -3316,7 +3354,7 @@ const TVDetails: React.FC = () => {
         console.error('Error parsing continue watching data:', error);
       }
     }
-  }, [id, availableSeasons, defaultStartSeason]);
+  }, [id, animeMode, availableSeasons, defaultStartSeason]);
   // Fonction pour continuer le visionnage
   const handleContinueWatching = () => {
     // Use the progress data if available, otherwise start from the first episode

@@ -2798,7 +2798,7 @@ const WrappedPage: React.FC = () => {
 
         ctx.fillStyle = 'rgba(255,255,255,0.36)';
         ctx.font = '600 26px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-        const domainLabel = 'movix.cash';
+        const domainLabel = 'movix.tax';
         ctx.fillText(domainLabel, width - 78 - ctx.measureText(domainLabel).width, footerTextY);
 
         return new Promise((resolve) => {

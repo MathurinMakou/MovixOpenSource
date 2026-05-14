@@ -260,6 +260,20 @@ app.use(jsonParseErrorHandler);
 
 app.use(express.urlencoded({ extended: true, limit: "5mb" })); // Reduced from 1000mb to prevent abuse
 
+// 8. Serve uploaded OAuth app icons (`public/oauth-icons/<filename>`).
+//    Le panel admin upload ici, OAuthAuthorizePage lit `/oauth-icons/<filename>`.
+const { ICON_DIR: OAUTH_ICON_DIR } = require('./utils/oauthClientsDb');
+app.use(
+  '/oauth-icons',
+  express.static(OAUTH_ICON_DIR, {
+    fallthrough: false,
+    maxAge: '7d',
+    setHeaders: (res) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
+  }),
+);
+
 // ==========================================================================
 // Configure route modules with dependencies from extracted utilities
 // ==========================================================================
@@ -459,6 +473,7 @@ app.use('/api/profiles', require('./routes/profiles'));
 app.use('/api/help', require('./routes/helpFeedback'));
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/oauth', oauthRouter);
+app.use('/api/admin/oauth-apps', require('./routes/adminOauthApps'));
 app.use('/api/sessions', require('./routes/sessions'));
 app.use('/api', require('./routes/debrid'));
 app.use('/proxy', require('./routes/proxy'));
@@ -532,6 +547,16 @@ const appReady = (async () => {
 
     await ensureOAuthStorage(pool);
     console.log('OAuth tables initialized successfully');
+
+      // OAuth client config (table oauth_clients + stats + grants VIP).
+      // ensureTables et migrateLegacyJsonIfNeeded sont protégés par le lock
+      // mais idempotents — sûr sur restart cluster. reloadCache hydrate
+      // le cache in-process de CE worker (chaque worker a le sien).
+      const oauthClientsDb = require('./utils/oauthClientsDb');
+      await oauthClientsDb.ensureTables();
+      await oauthClientsDb.migrateLegacyJsonIfNeeded();
+      await oauthClientsDb.reloadCache();
+      console.log('OAuth client tables initialized successfully');
 
       // Initialize Wishboard routes
       const { createWishboardRouter } = require("./wishboardRoutes");

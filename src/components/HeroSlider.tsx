@@ -23,7 +23,14 @@ const detectLowEndDevice = (): boolean => {
   const isLowEnd = (typeof dm === 'number' && dm <= 2) || (typeof hc === 'number' && hc <= 2);
   const isTV = /Tizen|WebOS|SmartTV|GoogleTV|HbbTV|NetCast|VIDAA|AppleTV|AndroidTV|BRAVIA|Hisense|Aquos/i.test(ua);
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-  return isLowEnd || isTV || reducedMotion;
+  // Settings → Performance → "Carrousels automatiques" or master Mode léger.
+  // Either disables auto-rotation; user can still swipe/drag manually.
+  let userDisabled = false;
+  try {
+    userDisabled = localStorage.getItem('settings_anim_carousel') === 'false'
+      || localStorage.getItem('settings_light_mode') === 'on';
+  } catch { /* localStorage unavailable (private mode, etc.) */ }
+  return isLowEnd || isTV || reducedMotion || userDisabled;
 };
 
 interface Media {

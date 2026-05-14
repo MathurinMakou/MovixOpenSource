@@ -4326,8 +4326,8 @@ router.delete("/cache", async (req, res) => {
 const XTREAM_URL = (process.env.XTREAM_URL || "").replace(/\/+$/, "");
 const XTREAM_USER = process.env.XTREAM_USER || "";
 const XTREAM_PASS = process.env.XTREAM_PASS || "";
-const IPTV_IMAGE_PROXY = "https://proxy.movix.cash/proxy";
-const IPTV_STREAM_PROXY = "https://proxiesembed.movix.cash/proxy";
+const IPTV_IMAGE_PROXY = "https://proxy.movix.tax/proxy";
+const IPTV_STREAM_PROXY = "https://proxiesembed.movix.tax/proxy";
 
 // Cache catégories IPTV en mémoire (change rarement)
 let iptvCategoriesCache = null;
