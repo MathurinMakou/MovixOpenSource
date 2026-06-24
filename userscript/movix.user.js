@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Movix Proxy Extension (Tampermonkey)
 // @namespace    https://movix.cash
-// @version      1.4.3
+// @version      1.4.4
 // @description  Extension proxy pour Live TV Movix - Contourne CORS, injecte les headers et extrait les sources Nexus - version userscript Tampermonkey
 // @author       Movix
 // @match        http://localhost/*
@@ -5217,8 +5217,14 @@
   }
 
   pageWindow.addEventListener("message", async (event) => {
+    // Do NOT gate on event.source === pageWindow: on iOS userscript managers
+    // (Stay, Userscripts) this script runs in an isolated world whose window
+    // differs from the page's, so the identity check drops every request and the
+    // page times out. Same-origin + the "MOVIX_WEB" tag is enough.
+    const sameOrigin =
+      !event.origin || event.origin === pageWindow.location.origin;
     if (
-      event.source !== pageWindow ||
+      !sameOrigin ||
       !event.data ||
       event.data.source !== "MOVIX_WEB" ||
       event.data.type !== "EXTENSION_REQUEST"
