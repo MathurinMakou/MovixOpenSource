@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Movix Proxy Extension (Tampermonkey)
 // @namespace    https://movix.cash
-// @version      1.4.5
+// @version      1.4.6
 // @description  Extension proxy pour Live TV Movix - Contourne CORS, injecte les headers et extrait les sources Nexus - version userscript Tampermonkey
 // @author       Movix
 // @match        http://localhost/*
@@ -20,6 +20,8 @@
 // @match        https://movix.chat/*
 // @match        https://*.movix.chat/*
 // @match        https://*.movix.golf/*
+// @match        https://movix.date/*
+// @match        https://*.movix.date/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -1033,7 +1035,7 @@
    */
 
   // ===== Configuration =====
-  const PROXY_BASE = "https://proxiesembed.movix.chat";
+  const PROXY_BASE = "https://proxiesembed.movix.date";
 
   // AES constants for SeekStreaming (embed4me)
   const SEEKSTREAMING_AES_KEY_HEX =
@@ -2402,7 +2404,7 @@
     typeof location !== "undefined" &&
     (location.hostname === "localhost" || location.hostname === "127.0.0.1")
       ? "http://localhost:25565"
-      : "https://api.movix.chat";
+      : "https://api.movix.date";
   const STREAM_PROXY_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -2557,6 +2559,7 @@
             "movix.tax",
             "movix.golf",
             "movix.chat",
+            "movix.date",
           ],
           resourceTypes: [
             "xmlhttprequest",
@@ -2968,13 +2971,15 @@
         currentHostname === "movix.golf" ||
         currentHostname === "movix.chat" ||
         currentHostname.endsWith(".movix.chat") ||
+        currentHostname === "movix.date" ||
+        currentHostname.endsWith(".movix.date") ||
         currentHostname.endsWith(".movix.golf")
       ) {
-        return (currentOrigin || "https://movix.chat").replace(/\/$/, "");
+        return (currentOrigin || "https://movix.date").replace(/\/$/, "");
       }
     } catch {}
 
-    return "https://movix.chat";
+    return "https://movix.date";
   }
 
   function buildBackendApiHeaders(accessKey, extraHeaders = {}) {

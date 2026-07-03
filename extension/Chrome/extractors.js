@@ -5,7 +5,7 @@
  */
 
 // ===== Configuration =====
-const PROXY_BASE = 'https://proxiesembed.movix.cash';
+const PROXY_BASE = 'https://proxiesembed.movix.date';
 
 // AES constants for SeekStreaming (embed4me)
 const SEEKSTREAMING_AES_KEY_HEX = '6b69656d7469656e6d7561393131636131323334353637383930';
