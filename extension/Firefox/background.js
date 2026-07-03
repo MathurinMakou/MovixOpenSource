@@ -4,10 +4,10 @@
 
 const browserAPI = typeof browser !== "undefined" ? browser : chrome;
 
-const WITV_BASE_URL = "https://witv.team";
+const WITV_BASE_URL = "https://witv.football";
 const SOSPLAY_BASE_URL = "https://streamonsport.art";
-const LIVETV_BASE_URL = "https://livetv882.me/frx/";
-const LIVETV_EMBED_ORIGIN = "https://livetv882.me";
+const LIVETV_BASE_URL = "https://livetv901.me/frx/";
+const LIVETV_EMBED_ORIGIN = "https://livetv901.me";
 const LIVETV_EMBED_REFERER = LIVETV_BASE_URL;
 // Backend API URL for got-scraping based extraction.
 // Dev override: when the requesting page is localhost (Vite dev on :3000),
@@ -1140,7 +1140,7 @@ async function getWiflixStream(channelId, accessKey = null) {
 // Add DNR rule for Wiflix headers
 async function addWiflixHeadersRule(
   urlPattern,
-  referer = "https://witv.team/",
+  referer = "https://witv.football/",
 ) {
   try {
     const url = new URL(urlPattern);
@@ -1825,7 +1825,7 @@ function shouldIgnoreLiveTvIframeUrl(rawUrl) {
     const combined = `${hostname}${pathname}${search}`;
 
     if (
-      hostname === "ads.livetv882.me" ||
+      hostname === "ads.livetv901.me" ||
       hostname.startsWith("ads.") ||
       hostname.startsWith("ad.")
     ) {

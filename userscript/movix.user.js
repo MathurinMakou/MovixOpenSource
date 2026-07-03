@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Movix Proxy Extension (Tampermonkey)
 // @namespace    https://movix.cash
-// @version      1.4.3
+// @version      1.4.5
 // @description  Extension proxy pour Live TV Movix - Contourne CORS, injecte les headers et extrait les sources Nexus - version userscript Tampermonkey
 // @author       Movix
 // @match        http://localhost/*
@@ -1804,6 +1804,8 @@
         const mp4Resp = await fetch(mp4Url, {
           headers: {
             accept: "*/*",
+            // Only resolve the redirect chain — don't download the video
+            range: "bytes=0-0",
             referer: "https://video.sibnet.ru/",
             "user-agent": "Mozilla/5.0 Chrome/145.0.0.0",
           },
@@ -1813,6 +1815,12 @@
         if (mp4Resp.url && mp4Resp.url !== mp4Url) {
           mp4Url = mp4Resp.url;
           console.log(`[EXT-SIBNET] Followed redirect to: ${mp4Url}`);
+        }
+        // Stop any body download (in case the server ignored the Range header)
+        try {
+          await mp4Resp.body?.cancel();
+        } catch {
+          /* already closed */
         }
       } catch (e) {
         console.warn(
@@ -2317,8 +2325,8 @@
           : "https://lpayer.embed4me.com",
       },
       cinep: {
-        Referer: "https://cinepulse.lol/",
-        Origin: "https://cinepulse.lol",
+        Referer: "https://purstream.mx/",
+        Origin: "https://purstream.mx",
       },
     };
 
@@ -2383,10 +2391,10 @@
   // --- END extension/Chrome/extractors.js ---
 
   // --- BEGIN extension/Chrome/background.js ---
-  const WITV_BASE_URL = "https://witv.team";
+  const WITV_BASE_URL = "https://witv.football";
   const SOSPLAY_BASE_URL = "https://streamonsport.art";
-  const LIVETV_BASE_URL = "https://livetv882.me/frx/";
-  const LIVETV_EMBED_ORIGIN = "https://livetv882.me";
+  const LIVETV_BASE_URL = "https://livetv901.me/frx/";
+  const LIVETV_EMBED_ORIGIN = "https://livetv901.me";
   const LIVETV_EMBED_REFERER = LIVETV_BASE_URL;
   // Backend API URL for got-scraping based extraction.
   // Dev override: on localhost (Vite dev on :3000) hit the local backend (:25565).
@@ -3620,7 +3628,7 @@
   // Add DNR rule for Wiflix headers
   async function addWiflixHeadersRule(
     urlPattern,
-    referer = "https://witv.team/",
+    referer = "https://witv.football/",
   ) {
     try {
       const url = new URL(urlPattern);
@@ -4320,7 +4328,7 @@
       const combined = `${hostname}${pathname}${search}`;
 
       if (
-        hostname === "ads.livetv882.me" ||
+        hostname === "ads.livetv901.me" ||
         hostname.startsWith("ads.") ||
         hostname.startsWith("ad.")
       ) {

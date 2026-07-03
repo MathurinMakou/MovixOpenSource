@@ -675,6 +675,8 @@ async function extractSibnet(sibnetUrl) {
             const mp4Resp = await fetch(mp4Url, {
                 headers: {
                     'accept': '*/*',
+                    // Only resolve the redirect chain — don't download the video
+                    'range': 'bytes=0-0',
                     'referer': 'https://video.sibnet.ru/',
                     'user-agent': 'Mozilla/5.0 Chrome/145.0.0.0'
                 },
@@ -685,6 +687,8 @@ async function extractSibnet(sibnetUrl) {
                 mp4Url = mp4Resp.url;
                 console.log(`[EXT-SIBNET] Followed redirect to: ${mp4Url}`);
             }
+            // Stop any body download (in case the server ignored the Range header)
+            try { await mp4Resp.body?.cancel(); } catch { /* already closed */ }
         } catch (e) {
             console.warn('[EXT-SIBNET] Could not follow redirect, using original URL:', e);
         }
@@ -1082,7 +1086,7 @@ async function setupHeadersForService(type, url, referer) {
         uqload: { 'Referer': 'https://uqload.bz/', 'Origin': 'https://uqload.bz' },
         doodstream: { 'Referer': referer || 'https://d0000d.com/', 'Origin': referer ? new URL(referer).origin : 'https://d0000d.com' },
         seekstreaming: { 'Referer': referer || 'https://lpayer.embed4me.com/', 'Origin': referer ? new URL(referer).origin : 'https://lpayer.embed4me.com' },
-        cinep: { 'Referer': 'https://cinepulse.lol/', 'Origin': 'https://cinepulse.lol' },
+        cinep: { 'Referer': 'https://purstream.mx/', 'Origin': 'https://purstream.mx' },
     };
 
     const hdrs = headerMap[type];
