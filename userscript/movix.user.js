@@ -145,13 +145,15 @@
   }
 
   function wildcardToRegExp(pattern) {
+    // DNR urlFilter semantics: `*` is a wildcard, everything else is a
+    // SUBSTRING match (not anchored). A bare filter like "/cfall/s" must match
+    // anywhere in the URL, so it must NOT be wrapped in ^...$ — otherwise the
+    // FCTV Referer rule never fires and the CDN 403s ("deny by referer").
     return new RegExp(
-      "^" +
-        String(pattern || "*")
-          .split("*")
-          .map((part) => escapeRegExp(part))
-          .join(".*") +
-        "$",
+      String(pattern || "*")
+        .split("*")
+        .map((part) => escapeRegExp(part))
+        .join(".*"),
       "i",
     );
   }
